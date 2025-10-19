@@ -1,0 +1,66 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="UTF-8" />
+	<title>WebPilot Panel</title>
+	<style>
+		body { font-family: sans-serif; margin: 12px; }
+		#log { white-space: pre-wrap; font-size: 12px; }
+	</style>
+</head>
+<body>
+	<h3>WebPilot</h3>
+	<div>
+		<button id="ping">Ping</button>
+		<button id="btn-analyze">Analyze Page</button>
+		<button id="btn-highlight">Highlight <button></button></button>
+	</div>
+	<hr />
+	<div>
+		<input id="desc" placeholder="Describe target (e.g., search box)" style="width: 60%" />
+		<button id="btn-find">Find</button>
+	</div>
+	<hr />
+	<div>
+		<input id="task" placeholder="Task (e.g., Search for cats on YouTube)" style="width: 75%" />
+		<button id="btn-run-task">Run</button>
+	</div>
+	<div id="progress" style="margin-top:8px; font-size:13px; color:#555; font-weight:bold;"></div>
+	<hr />
+	<details>
+		<summary>LLM Settings</summary>
+		<div style="margin-top:6px">
+			<select id="llm-mode">
+				<option value="heuristic">Heuristic (no LLM)</option>
+				<option value="llm">LLM via proxy</option>
+			</select>
+		</div>
+		<div style="margin-top:6px">
+			<input id="llm-url" placeholder="Open-source LLM proxy base URL (e.g., Ollama/OpenRouter)" style="width: 75%" />
+		</div>
+		<div style="margin-top:6px">
+			<input id="llm-key" placeholder="API Key (stored locally)" style="width: 75%" />
+		</div>
+		<div style="margin-top:6px">
+			<input id="llm-model" placeholder="Model name (e.g., llama-3.3-70b-instruct)" style="width: 75%" />
+		</div>
+		<div style="margin-top:6px">
+			<button id="save-llm">Save</button>
+		</div>
+	</details>
+	<hr />
+	<div>
+		<input id="sel" placeholder="CSS selector" style="width: 60%" />
+		<input id="text" placeholder="text (for TYPE)" style="width: 35%" />
+	</div>
+	<div style="margin-top:8px">
+		<button id="btn-click">CLICK</button>
+		<button id="btn-type">TYPE</button>
+		<button id="btn-wait">WAIT</button>
+	</div>
+	<pre id="log"></pre>
+	<script type="module" src="/src/panel.ts"></script>
+</body>
+</html>
+
+
