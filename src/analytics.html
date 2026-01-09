@@ -1,0 +1,310 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="UTF-8" />
+	<title>WebPilot Analytics</title>
+	<style>
+		body {
+			font-family: system-ui, -apple-system, sans-serif;
+			margin: 0;
+			padding: 20px;
+			background: #f5f5f5;
+		}
+		.container {
+			max-width: 1200px;
+			margin: 0 auto;
+			background: white;
+			padding: 24px;
+			border-radius: 8px;
+			box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+		}
+		h1 {
+			margin-top: 0;
+			color: #333;
+		}
+		h2 {
+			color: #555;
+			margin-top: 32px;
+			border-bottom: 2px solid #eee;
+			padding-bottom: 8px;
+		}
+		.stat-grid {
+			display: grid;
+			grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+			gap: 16px;
+			margin: 20px 0;
+		}
+		.stat-card {
+			background: #f8f9fa;
+			padding: 16px;
+			border-radius: 6px;
+			border-left: 4px solid #4f46e5;
+		}
+		.stat-label {
+			font-size: 12px;
+			color: #666;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+		}
+		.stat-value {
+			font-size: 32px;
+			font-weight: bold;
+			color: #333;
+			margin: 8px 0;
+		}
+		.stat-subtitle {
+			font-size: 14px;
+			color: #888;
+		}
+		table {
+			width: 100%;
+			border-collapse: collapse;
+			margin: 16px 0;
+		}
+		th {
+			background: #f8f9fa;
+			padding: 12px;
+			text-align: left;
+			font-weight: 600;
+			color: #555;
+			border-bottom: 2px solid #e0e0e0;
+		}
+		td {
+			padding: 12px;
+			border-bottom: 1px solid #f0f0f0;
+		}
+		tr:hover {
+			background: #f8f9fa;
+		}
+		.progress-bar {
+			height: 8px;
+			background: #e0e0e0;
+			border-radius: 4px;
+			overflow: hidden;
+			margin-top: 4px;
+		}
+		.progress-fill {
+			height: 100%;
+			background: #4f46e5;
+			transition: width 0.3s;
+		}
+		.success {
+			color: #10b981;
+		}
+		.failure {
+			color: #ef4444;
+		}
+		.btn {
+			padding: 8px 16px;
+			background: #4f46e5;
+			color: white;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 14px;
+			margin-right: 8px;
+		}
+		.btn:hover {
+			background: #4338ca;
+		}
+		.btn-secondary {
+			background: #6b7280;
+		}
+		.btn-secondary:hover {
+			background: #4b5563;
+		}
+		.error-text {
+			font-family: 'Courier New', monospace;
+			font-size: 12px;
+			color: #ef4444;
+			background: #fef2f2;
+			padding: 8px;
+			border-radius: 4px;
+			overflow-x: auto;
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<h1>📊 WebPilot Analytics Dashboard</h1>
+		<p style="color: #666;">Performance metrics and automation insights</p>
+
+		<div style="margin: 20px 0;">
+			<button class="btn" id="refresh">Refresh Data</button>
+			<button class="btn btn-secondary" id="export">Export JSON</button>
+			<button class="btn btn-secondary" id="clear">Clear Data</button>
+		</div>
+
+		<div id="stats-loading" style="text-align:center; padding:40px; color:#888;">
+			Loading analytics data...
+		</div>
+
+		<div id="stats-container" style="display:none;">
+			<!-- Overview Stats -->
+			<div class="stat-grid" id="overview-stats"></div>
+
+			<!-- Strategy Performance -->
+			<h2>🎯 Detection Strategy Performance</h2>
+			<table id="strategy-table">
+				<thead>
+					<tr>
+						<th>Strategy</th>
+						<th>Usage Count</th>
+						<th>Success Rate</th>
+						<th>Performance</th>
+					</tr>
+				</thead>
+				<tbody id="strategy-tbody"></tbody>
+			</table>
+
+			<!-- Domain Performance -->
+			<h2>🌐 Top Domains</h2>
+			<table id="domain-table">
+				<thead>
+					<tr>
+						<th>Domain</th>
+						<th>Total Attempts</th>
+						<th>Successes</th>
+						<th>Success Rate</th>
+					</tr>
+				</thead>
+				<tbody id="domain-tbody"></tbody>
+			</table>
+
+			<!-- Top Errors -->
+			<h2>⚠️ Top Errors</h2>
+			<table id="error-table">
+				<thead>
+					<tr>
+						<th>Error</th>
+						<th>Count</th>
+					</tr>
+				</thead>
+				<tbody id="error-tbody"></tbody>
+			</table>
+		</div>
+	</div>
+
+	<script type="module">
+		import { getTelemetryStats, clearTelemetry, exportTelemetry } from './shared/telemetry';
+
+		async function loadStats() {
+			document.getElementById('stats-loading').style.display = 'block';
+			document.getElementById('stats-container').style.display = 'none';
+
+			try {
+				const stats = await getTelemetryStats();
+
+				// Overview stats
+				const overviewHtml = `
+					<div class="stat-card">
+						<div class="stat-label">Total Events</div>
+						<div class="stat-value">${stats.totalEvents}</div>
+					</div>
+					<div class="stat-card">
+						<div class="stat-label">Success Rate</div>
+						<div class="stat-value ${stats.successRate > 0.7 ? 'success' : 'failure'}">
+							${(stats.successRate * 100).toFixed(1)}%
+						</div>
+					</div>
+					<div class="stat-card">
+						<div class="stat-label">Avg Retries</div>
+						<div class="stat-value">${stats.avgRetries.toFixed(1)}</div>
+						<div class="stat-subtitle">per action</div>
+					</div>
+					<div class="stat-card">
+						<div class="stat-label">Avg Duration</div>
+						<div class="stat-value">${(stats.avgDuration / 1000).toFixed(1)}s</div>
+						<div class="stat-subtitle">per action</div>
+					</div>
+				`;
+				document.getElementById('overview-stats').innerHTML = overviewHtml;
+
+				// Strategy breakdown
+				let strategyHtml = '';
+				for (const [strategy, data] of Object.entries(stats.strategyBreakdown)) {
+					const successPct = (data.successRate * 100).toFixed(1);
+					strategyHtml += `
+						<tr>
+							<td><strong>${strategy}</strong></td>
+							<td>${data.count}</td>
+							<td class="${data.successRate > 0.7 ? 'success' : 'failure'}">${successPct}%</td>
+							<td>
+								<div class="progress-bar">
+									<div class="progress-fill" style="width: ${successPct}%"></div>
+								</div>
+							</td>
+						</tr>
+					`;
+				}
+				document.getElementById('strategy-tbody').innerHTML = strategyHtml;
+
+				// Domain stats
+				const sortedDomains = Object.entries(stats.domainStats)
+					.sort((a, b) => b[1].total - a[1].total)
+					.slice(0, 10);
+
+				let domainHtml = '';
+				for (const [domain, data] of sortedDomains) {
+					const successPct = (data.success / data.total * 100).toFixed(1);
+					domainHtml += `
+						<tr>
+							<td><code>${domain}</code></td>
+							<td>${data.total}</td>
+							<td class="success">${data.success}</td>
+							<td>${successPct}%</td>
+						</tr>
+					`;
+				}
+				document.getElementById('domain-tbody').innerHTML = domainHtml || '<tr><td colspan="4">No data</td></tr>';
+
+				// Top errors
+				let errorHtml = '';
+				for (const {error, count} of stats.topErrors) {
+					errorHtml += `
+						<tr>
+							<td><div class="error-text">${error}</div></td>
+							<td><strong>${count}</strong></td>
+						</tr>
+					`;
+				}
+				document.getElementById('error-tbody').innerHTML = errorHtml || '<tr><td colspan="2">No errors</td></tr>';
+
+				document.getElementById('stats-loading').style.display = 'none';
+				document.getElementById('stats-container').style.display = 'block';
+			} catch (error) {
+				document.getElementById('stats-loading').innerHTML = `
+					<div style="color: #ef4444;">
+						Failed to load analytics: ${error}
+					</div>
+				`;
+			}
+		}
+
+		// Event listeners
+		document.getElementById('refresh').addEventListener('click', loadStats);
+
+		document.getElementById('export').addEventListener('click', async () => {
+			const json = await exportTelemetry();
+			const blob = new Blob([json], { type: 'application/json' });
+			const url = URL.createObjectURL(blob);
+			const a = document.createElement('a');
+			a.href = url;
+			a.download = `webpilot-analytics-${Date.now()}.json`;
+			a.click();
+			URL.revokeObjectURL(url);
+		});
+
+		document.getElementById('clear').addEventListener('click', async () => {
+			if (confirm('Clear all analytics data? This cannot be undone.')) {
+				await clearTelemetry();
+				await loadStats();
+			}
+		});
+
+		// Load on page load
+		loadStats();
+	</script>
+</body>
+</html>
+

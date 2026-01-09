@@ -5,7 +5,7 @@ const manifest: ManifestV3Export = {
 	name: 'WebPilot',
 	description: 'Agentic Task Solver for multi-turn web automation',
 	version: '0.0.1',
-	permissions: ['storage', 'scripting', 'activeTab', 'sidePanel', 'tabs'],
+	permissions: ['storage', 'scripting', 'activeTab', 'sidePanel', 'tabs', 'automation'],
 	host_permissions: ['<all_urls>'],
 	action: {
 		default_title: 'WebPilot',
@@ -16,9 +16,19 @@ const manifest: ManifestV3Export = {
 	},
 	content_scripts: [
 		{
+			// Stealth mode injection - runs FIRST (before page scripts)
+			matches: ['<all_urls>'],
+			js: ['src/stealth-inject.ts'],
+			run_at: 'document_start',
+			all_frames: false,
+			world: 'MAIN' // Inject into page context, not extension context
+		},
+		{
+			// Main content script - runs after page loads
 			matches: ['<all_urls>'],
 			js: ['src/content.ts'],
 			run_at: 'document_idle',
+			all_frames: true,
 		},
 	],
 	web_accessible_resources: [

@@ -24,6 +24,7 @@
 	<div>
 		<input id="task" placeholder="Task (e.g., Search for cats on YouTube)" style="width: 75%" />
 		<button id="btn-run-task">Run</button>
+		<button id="btn-stop" style="margin-left:6px" disabled>Stop</button>
 	</div>
 	<div id="progress" style="margin-top:8px; font-size:13px; color:#555; font-weight:bold;"></div>
 	<hr />
@@ -36,7 +37,7 @@
 			</select>
 		</div>
 		<div style="margin-top:6px">
-			<input id="llm-url" placeholder="Open-source LLM proxy base URL (e.g., Ollama/OpenRouter)" style="width: 75%" />
+			<input id="llm-url" placeholder="LLM base URL (e.g., http://localhost:1234 for LM Studio)" style="width: 75%" />
 		</div>
 		<div style="margin-top:6px">
 			<input id="llm-key" placeholder="API Key (stored locally)" style="width: 75%" />
@@ -44,8 +45,71 @@
 		<div style="margin-top:6px">
 			<input id="llm-model" placeholder="Model name (e.g., llama-3.3-70b-instruct)" style="width: 75%" />
 		</div>
+		<div style="margin-top:8px; font-size:12px; color:#444;">
+			<label style="display:flex; align-items:center; gap:8px;">
+				<input id="agent-loop" type="checkbox" />
+				<span>Agent loop (continuous, 1 action per LLM call)</span>
+			</label>
+			<div style="margin-top:6px">
+				<label style="display:flex; align-items:center; gap:8px;">
+					<span>Max steps</span>
+					<input id="agent-max" type="number" min="1" max="200" style="width:90px" />
+				</label>
+			</div>
+		</div>
+		<div style="margin-top:8px; border-top:1px solid #ddd; padding-top:6px;">
+			<label style="font-size:12px; color:#444;">Detection Strategy:</label>
+			<select id="detection-strategy" style="width:100%; margin-top:4px;">
+				<option value="dom">DOM Snapshot (default)</option>
+				<option value="a11y">Accessibility Tree (60% faster)</option>
+				<option value="vision">Vision Model (GLM-4.6V-Flash, LLaVA, Qwen2-VL)</option>
+			</select>
+		</div>
+		<div style="margin-top:6px">
+			<label style="font-size:12px; display:flex; align-items:center; gap:6px;">
+				<input type="checkbox" id="use-vision-fallback" />
+				<span>Use vision fallback when DOM/A11y fail</span>
+			</label>
+		</div>
 		<div style="margin-top:6px">
 			<button id="save-llm">Save</button>
+		</div>
+	</details>
+	<hr />
+	<details>
+		<summary>Task History (Memory)</summary>
+		<div id="history-stats" style="margin-top:6px; font-size:12px; color:#666;"></div>
+		<div style="margin-top:6px">
+			<button id="view-history">View Patterns</button>
+			<button id="prune-history">Prune Old</button>
+			<button id="clear-history">Clear All</button>
+		</div>
+	</details>
+	<hr />
+	<details>
+		<summary>Profile Settings (Job Applications)</summary>
+		<div style="margin-top:6px; font-size:11px;">
+			<input id="profile-firstName" placeholder="First Name" style="width:48%;margin-right:2%" />
+			<input id="profile-lastName" placeholder="Last Name" style="width:48%" />
+		</div>
+		<div style="margin-top:4px;">
+			<input id="profile-email" placeholder="Email" style="width:100%" />
+		</div>
+		<div style="margin-top:4px;">
+			<input id="profile-phone" placeholder="Phone" style="width:100%" />
+		</div>
+		<div style="margin-top:4px;">
+			<input id="profile-location" placeholder="Location (City, State)" style="width:100%" />
+		</div>
+		<div style="margin-top:4px;">
+			<input id="profile-title" placeholder="Current Job Title" style="width:100%" />
+		</div>
+		<div style="margin-top:4px;">
+			<input id="profile-experience" placeholder="Years of Experience" type="number" style="width:100%" />
+		</div>
+		<div style="margin-top:6px">
+			<button id="save-profile">Save Profile</button>
+			<button id="load-profile">Load Profile</button>
 		</div>
 	</details>
 	<hr />
@@ -57,6 +121,13 @@
 		<button id="btn-click">CLICK</button>
 		<button id="btn-type">TYPE</button>
 		<button id="btn-wait">WAIT</button>
+	</div>
+	<hr />
+	<!-- Results Container for Summaries and Extracted Data -->
+	<div id="results-container" style="margin-top:12px; margin-bottom:12px;"></div>
+	<!-- Form Filling Dialog (hidden by default) -->
+	<div id="form-dialog-container" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:9999; padding:20px; overflow-y:auto;">
+		<div id="form-dialog-content" style="max-width:500px; margin:40px auto;"></div>
 	</div>
 	<pre id="log"></pre>
 	<script type="module" src="/src/panel.ts"></script>
