@@ -54,12 +54,12 @@ Now classify: "${userInput}"`;
 
     try {
         const response = await planWithLLM(prompt);
-        
+
         // Parse response
         const typeMatch = response.match(/TASK_TYPE:\s*(FORM_FILLING|SUMMARIZATION|DATA_EXTRACTION|NAVIGATION|GENERAL_AUTOMATION)/i);
         const intentMatch = response.match(/INTENT:\s*(.+?)(?:\n|$)/i);
         const paramsMatch = response.match(/PARAMETERS:\s*(\{[^}]*\})/i);
-        
+
         const taskTypeMap: Record<string, TaskType> = {
             'FORM_FILLING': 'form_filling',
             'SUMMARIZATION': 'summarization',
@@ -67,11 +67,11 @@ Now classify: "${userInput}"`;
             'NAVIGATION': 'navigation',
             'GENERAL_AUTOMATION': 'general_automation'
         };
-        
+
         const rawType = typeMatch?.[1] || 'GENERAL_AUTOMATION';
         const type = taskTypeMap[rawType] || 'general_automation';
         const intent = intentMatch?.[1]?.trim() || userInput;
-        
+
         let parameters: Record<string, any> = {};
         if (paramsMatch) {
             try {
@@ -80,7 +80,7 @@ Now classify: "${userInput}"`;
                 parameters = {};
             }
         }
-        
+
         return {
             type,
             originalInput: userInput,
@@ -104,27 +104,27 @@ Now classify: "${userInput}"`;
  */
 export function quickClassifyTask(userInput: string): TaskType {
     const lower = userInput.toLowerCase();
-    
+
     // Form filling keywords
     if (lower.match(/\b(fill|complete|submit|enter)\s+(the\s+)?(form|application|survey|questionnaire)/i)) {
         return 'form_filling';
     }
-    
+
     // Summarization keywords
     if (lower.match(/\b(summarize|summary|explain|what\s+is\s+this|tldr|give\s+me\s+(a\s+)?summary)/i)) {
         return 'summarization';
     }
-    
+
     // Data extraction keywords
     if (lower.match(/\b(extract|get|list|collect|scrape|find\s+all|show\s+all)\s+(all\s+)?(prices?|names?|emails?|links?|products?|data|items?)/i)) {
         return 'data_extraction';
     }
-    
+
     // Navigation keywords
     if (lower.match(/\b(go\s+to|open|navigate\s+to|visit|search\s+for)\b/i)) {
         return 'navigation';
     }
-    
+
     // Default to general automation
     return 'general_automation';
 }

@@ -4,12 +4,8 @@
  * Tests common workflows on top websites to ensure coverage.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
-
-// Mock chrome API for testing
-declare global {
-    var chrome: any;
-}
+// @ts-ignore
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 
 interface TestSite {
     name: string;
@@ -95,19 +91,19 @@ const TEST_SITES: TestSite[] = [
 describe('Universal Web Automation - Smoke Tests', () => {
     beforeAll(() => {
         // Setup mock chrome API
-        global.chrome = {
+        (global as any).chrome = {
             storage: {
                 local: {
-                    get: jest.fn(() => Promise.resolve({})),
-                    set: jest.fn(() => Promise.resolve())
-                }
+                    get: vi.fn(() => Promise.resolve({})),
+                    set: vi.fn(() => Promise.resolve())
+                } as any
             },
             tabs: {
-                query: jest.fn(() => Promise.resolve([{ id: 1, url: 'https://example.com' }])),
-                captureVisibleTab: jest.fn(() => Promise.resolve('data:image/jpeg;base64,...'))
+                query: vi.fn(() => Promise.resolve([{ id: 1, url: 'https://example.com' }])),
+                captureVisibleTab: vi.fn(() => Promise.resolve('data:image/jpeg;base64,...'))
             },
             runtime: {
-                sendMessage: jest.fn(() => Promise.resolve({ success: true }))
+                sendMessage: vi.fn(() => Promise.resolve({ success: true }))
             }
         };
     });
@@ -269,7 +265,7 @@ describe('Universal Web Automation - Smoke Tests', () => {
             ];
 
             expect(boxes.length).toBeGreaterThan(0);
-            expect(boxes[0].rect.w).toBeGreaterThan(0);
+            expect(boxes[0]?.rect.w).toBeGreaterThan(0);
         });
     });
 
@@ -304,7 +300,7 @@ describe('Universal Web Automation - Smoke Tests', () => {
             ];
 
             expect(tiers.length).toBeGreaterThanOrEqual(2);
-            expect(tiers[0].cost).toBe(0); // Local is free
+            expect(tiers[0]?.cost).toBe(0); // Local is free
         });
 
         it('should cascade to larger model on failure', () => {
@@ -327,7 +323,7 @@ describe('Integration Tests', () => {
         };
 
         expect(workflow.steps.length).toBeGreaterThan(0);
-        expect(workflow.steps[0].action).toBe('NAVIGATE');
+        expect(workflow.steps[0]?.action).toBe('NAVIGATE');
     });
 
     it('should handle YouTube search with Shadow DOM', async () => {
