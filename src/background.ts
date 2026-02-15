@@ -5,7 +5,7 @@ chrome.runtime.onInstalled.addListener(() => {
     // Auto-open side panel on toolbar click
     // This avoids gesture timing issues and ensures default_path is used
     if (chrome.sidePanel?.setPanelBehavior) {
-        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => { });
     }
 });
 
@@ -33,7 +33,7 @@ function isNoReceiverError(err?: string): boolean {
 }
 
 // Message router: panel/background -> active tab content script
-chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((raw: any, sender: any, sendResponse: (response: any) => void) => {
     const request = raw as BusRequest | { type: string };
     if ((request as any)?.type === 'PING') {
         sendResponse({ ok: true, from: 'background' });
@@ -49,7 +49,7 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
             const tabId: number | undefined =
                 sender.tab?.id ??
                 (await new Promise<number | undefined>((resolve) => {
-                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => resolve(tabs[0]?.id));
+                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs: chrome.tabs.Tab[]) => resolve(tabs[0]?.id));
                 }));
 
             if (!tabId) {

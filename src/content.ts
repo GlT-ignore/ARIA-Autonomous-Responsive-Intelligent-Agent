@@ -3,7 +3,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
 
 (() => {
     console.log('WebPilot content loaded');
-    
+
     // Enable stealth mode for sites with anti-bot protection
     if (needsStealthMode(window.location.href)) {
         console.log('[Stealth] Enabling anti-detection for:', window.location.hostname);
@@ -133,7 +133,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
     };
 
     // Edge case handlers
-    
+
     /**
      * Dismiss modals and popups automatically
      */
@@ -207,16 +207,16 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
             const originalXHR = window.XMLHttpRequest;
 
             // Monitor fetch requests
-            window.fetch = async (...args) => {
+            window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
                 lastActivity = Date.now();
-                return originalFetch(...args);
+                return originalFetch(input, init);
             };
 
             // Monitor XHR requests
             const originalOpen = originalXHR.prototype.open;
-            originalXHR.prototype.open = function (...args) {
+            (originalXHR.prototype as any).open = function (method: string, url: string | URL, ...args: any[]) {
                 lastActivity = Date.now();
-                return originalOpen.apply(this, args);
+                return (originalOpen as any).apply(this, [method, url, ...args]);
             };
 
             // Check for idle
@@ -290,9 +290,9 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
         let pendingFetch = 0;
         let lastMutation = Date.now();
         const originalFetch = window.fetch;
-        window.fetch = function(...args) {
+        window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
             pendingFetch++;
-            return originalFetch.apply(this, args).finally(() => { pendingFetch--; });
+            return originalFetch.apply(this, [input, init]).finally(() => { pendingFetch--; });
         };
         const obs = new MutationObserver(() => { lastMutation = Date.now(); });
         obs.observe(document.body, { childList: true, subtree: true });
@@ -341,7 +341,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
         const candidatesSelector = 'button, a, input, select, textarea, [role="button"], [aria-label], [onclick]';
         const allElements = allDeep(document);
         console.log(`[WebPilot] Building snapshot: ${allElements.length} total elements`);
-        
+
         const elements = allElements
             .filter((el) => {
                 if (!(el as Element).matches?.(candidatesSelector)) return false;
@@ -351,18 +351,19 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
             })
             .slice(0, 200)
             .map((el) => {
-                const rect = (el as HTMLElement).getBoundingClientRect?.();
-                const text = ((el as HTMLElement).innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+                const htmlEl = el as HTMLElement;
+                const rect = htmlEl.getBoundingClientRect?.();
+                const text = (htmlEl.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
                 const attrs: Record<string, string | null> = {
-                    id: (el as HTMLElement).id || null,
-                    name: (el as HTMLElement).getAttribute('name'),
-                    type: (el as HTMLElement).getAttribute('type'),
-                    role: (el as HTMLElement).getAttribute('role'),
-                    ariaLabel: (el as HTMLElement).getAttribute('aria-label'),
+                    id: htmlEl.id || null,
+                    name: htmlEl.getAttribute('name'),
+                    type: htmlEl.getAttribute('type'),
+                    role: htmlEl.getAttribute('role'),
+                    ariaLabel: htmlEl.getAttribute('aria-label'),
                     placeholder: (el as HTMLInputElement).placeholder || null,
                     value: (el as HTMLInputElement).value || null,
-                    title: (el as HTMLElement).title || null,
-                    classes: (el as HTMLElement).className?.toString() || null,
+                    title: htmlEl.title || null,
+                    classes: htmlEl.className?.toString() || null,
                 };
                 const guess = getUniqueSelector(el) || '';
                 return {
@@ -373,19 +374,19 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                     guess,
                 };
             });
-        
+
         // Add metadata to help LLM understand if page is loaded/useful
         const inputCount = elements.filter(e => e.tag === 'input').length;
         const buttonCount = elements.filter(e => e.tag === 'button' || e.attrs.role === 'button').length;
         const linkCount = elements.filter(e => e.tag === 'a').length;
-        const hasSearchBox = elements.some(e => 
-            e.tag === 'input' && 
-            (e.attrs.type === 'search' || 
-             e.attrs.placeholder?.toLowerCase().includes('search') ||
-             e.attrs.ariaLabel?.toLowerCase().includes('search'))
+        const hasSearchBox = elements.some(e =>
+            e.tag === 'input' &&
+            (e.attrs.type === 'search' ||
+                e.attrs.placeholder?.toLowerCase().includes('search') ||
+                e.attrs.ariaLabel?.toLowerCase().includes('search'))
         );
         const hasForm = document.querySelector('form') !== null;
-        
+
         console.log(`[WebPilot] Snapshot: ${elements.length} interactive elements found on ${location.href}`);
         console.log(`[WebPilot] Page stats: ${inputCount} inputs, ${buttonCount} buttons, ${linkCount} links, hasSearchBox=${hasSearchBox}, hasForm=${hasForm}`);
         console.log(`[WebPilot] Sample elements:`, elements.slice(0, 5).map(e => ({
@@ -394,10 +395,10 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
             placeholder: e.attrs.placeholder,
             text: e.text?.slice(0, 30)
         })));
-        
-        return { 
-            url: location.href, 
-            title: document.title, 
+
+        return {
+            url: location.href,
+            title: document.title,
             elements,
             metadata: {
                 totalInteractive: elements.length,
@@ -419,7 +420,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
     };
 
     // Modern site patterns (2024) - inlined for content script
-    const getModernPatterns = (): Record<string, Record<string, string[]>> => {
+    const getModernPatterns = (): Record<string, string[]> => {
         const hostname = location.hostname.toLowerCase().replace(/^www\./, '');
         const patterns: Record<string, Record<string, string[]>> = {
             'youtube.com': {
@@ -474,16 +475,17 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 'upvote button': ['button[aria-label*="Up vote"]', 'button.js-vote-up-btn']
             }
         };
-        
-        return patterns[hostname] || patterns[hostname.split('.').slice(-2).join('.')] || {};
+
+        const result = patterns[hostname] || patterns[hostname.split('.').slice(-2).join('.')] || {};
+        return (result as unknown) as Record<string, string[]>;
     };
 
     const findBySemantic = (desc: string): Element | null => {
         const lower = desc.toLowerCase();
         const modernPatterns = getModernPatterns();
-        
+
         const preferInputs = /(box|input|field|bar)/.test(lower);
-        
+
         // Site-specific: YouTube search input often lives inside ytd-searchbox shadow root
         if (preferInputs && /search/.test(lower) && location.hostname.includes('youtube')) {
             const host = document.querySelector('ytd-searchbox') as any;
@@ -493,19 +495,19 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 if (isInteractable(ytInput)) return ytInput as Element;
             }
         }
-        
+
         // Try modern patterns first
         for (const [key, selectors] of Object.entries(modernPatterns)) {
             if (lower.includes(key) || key.includes(lower)) {
-                for (const sel of selectors) {
+                for (const sel of (selectors as any)) {
                     const el = queryDeep(sel);
                     if (!isInteractable(el)) continue;
                     if (preferInputs && (el as HTMLElement).tagName.toLowerCase() !== 'input' && (el as HTMLElement).tagName.toLowerCase() !== 'textarea') continue;
-                    return el!;
+                    return el;
                 }
             }
         }
-        
+
         // Fallback to generic patterns
         const fallbackMapping: Record<string, string[]> = {
             'search box': ['input[aria-label*="Search" i]', 'input[type="search"]', 'input[placeholder*="Search" i]', 'input[name*="search" i]'],
@@ -514,7 +516,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
             'login button': ['button[type="submit"]', 'button:has-text("Log in")', 'button:has-text("Sign in")'],
             'close button': ['button[aria-label*="Close" i]', 'button.close', '[data-dismiss="modal"]']
         };
-        
+
         const entries = Object.entries(fallbackMapping).sort((a, b) => b[0].length - a[0].length);
         for (const [key, selectors] of entries) {
             if (lower.includes(key)) {
@@ -526,7 +528,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 }
             }
         }
-        
+
         return null;
     };
 
@@ -680,16 +682,16 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
         if (cls) return `${el.tagName.toLowerCase()}.${cls}`;
         return null;
     };
-    
+
     // Enhanced form field detection
     const findByFormContext = (desc: string): Element | null => {
         const lower = desc.toLowerCase();
-        
+
         // Find labels containing description
-        const labels = Array.from(document.querySelectorAll('label')).filter(el => 
+        const labels = Array.from(document.querySelectorAll('label')).filter(el =>
             (el.textContent || '').toLowerCase().includes(lower)
         );
-        
+
         for (const label of labels) {
             // Check for label[for] association
             const forAttr = label.getAttribute('for');
@@ -697,12 +699,12 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 const input = document.getElementById(forAttr);
                 if (isInteractable(input)) return input!;
             }
-            
+
             // Check for nested input
             const nested = label.querySelector('input, select, textarea');
             if (isInteractable(nested)) return nested!;
         }
-        
+
         // Check for placeholder match
         const inputs = Array.from(document.querySelectorAll('input, select, textarea'));
         for (const input of inputs) {
@@ -711,7 +713,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 return input;
             }
         }
-        
+
         // Check for aria-describedby
         for (const input of inputs) {
             const describedBy = (input as HTMLElement).getAttribute('aria-describedby');
@@ -722,59 +724,61 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 }
             }
         }
-        
+
         return null;
     };
-    
+
     // Select dropdown option by value or text
     const selectOption = async (selector: string, value: string) => {
         const el = queryDeep(selector) as HTMLSelectElement | null;
         if (!el) throw new Error('Select element not found');
-        
+
         // Try by value first
         for (let i = 0; i < el.options.length; i++) {
-            if (el.options[i].value === value) {
+            const opt = el.options[i];
+            if (opt && opt.value === value) {
                 el.selectedIndex = i;
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 return true;
             }
         }
-        
+
         // Try by text
         for (let i = 0; i < el.options.length; i++) {
-            if (el.options[i].text.toLowerCase().includes(value.toLowerCase())) {
+            const opt = el.options[i];
+            if (opt && opt.text.toLowerCase().includes(value.toLowerCase())) {
                 el.selectedIndex = i;
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 return true;
             }
         }
-        
+
         throw new Error(`Option "${value}" not found in select`);
     };
-    
+
     // File upload simulation (limited in extensions)
     const uploadFile = async (selector: string, fileName: string) => {
         const el = queryDeep(selector) as HTMLInputElement | null;
         if (!el || el.type !== 'file') throw new Error('File input not found');
-        
+
         // Note: Cannot programmatically set files due to security restrictions
         // This will highlight the element for user to manually select file
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         el.focus();
-        
+
         // Store filename hint for user
         const hint = document.createElement('div');
         hint.textContent = `Please select: ${fileName}`;
         hint.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#ff9800;color:#fff;padding:12px 24px;border-radius:4px;z-index:999999;font-size:14px;';
         document.body.appendChild(hint);
-        
+
         await new Promise(resolve => setTimeout(resolve, 5000));
         hint.remove();
-        
+
         return true;
     };
 
-    chrome.runtime.onMessage.addListener((raw: BusRequest, _sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((raw: BusRequest, _sender: any, sendResponse: (response?: any) => void) => {
         const { type: msgType, payload } = raw || {} as BusRequest;
         const respond = (ok: boolean, data?: unknown, error?: string) => sendResponse({ id: raw?.id, success: ok, data, error } as BusResponse);
 
@@ -836,38 +840,38 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 respond(true, { selector: sel });
                 return true;
             }
-            
+
             // EXTRACT_CONTENT: Extract readable page content for summarization
             if (msgType === 'EXTRACT_CONTENT') {
                 try {
                     const title = document.title;
                     const url = location.href;
-                    
+
                     // Extract main text content
                     const mainContentSelectors = ['article', 'main', '[role="main"]', '.content', '.post', '.article'];
                     let mainElement: Element | null = null;
-                    
+
                     for (const selector of mainContentSelectors) {
                         mainElement = document.querySelector(selector);
                         if (mainElement) break;
                     }
-                    
-                    const textSource = mainElement || document.body;
+
+                    const textSource = (mainElement || document.body) as HTMLElement;
                     const mainText = textSource.innerText || textSource.textContent || '';
-                    
+
                     // Extract headings
                     const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4'))
                         .map(h => h.textContent?.trim())
                         .filter(Boolean);
-                    
+
                     // Extract key points (list items)
                     const keyPoints = Array.from(document.querySelectorAll('article li, main li, .content li'))
                         .slice(0, 10)
                         .map(li => li.textContent?.trim())
                         .filter(Boolean);
-                    
+
                     const wordCount = mainText.split(/\s+/).length;
-                    
+
                     respond(true, {
                         title,
                         url,
@@ -881,27 +885,27 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 }
                 return true;
             }
-            
+
             // EXTRACT_DATA: Extract structured data based on targets
             if (msgType === 'EXTRACT_DATA') {
                 try {
                     const targets = (payload as any).targets || [];
                     const items: Array<Record<string, any>> = [];
                     const seenItems = new Set<string>();
-                    
+
                     // For each target, find matching elements
                     for (const target of targets) {
                         const description = target.description;
                         const selectors = target.selectors || [];
                         const dataType = target.dataType || 'text';
-                        
+
                         for (const selector of selectors) {
                             try {
                                 const elements = document.querySelectorAll(selector);
-                                
+
                                 for (const el of Array.from(elements)) {
                                     let value = '';
-                                    
+
                                     // Extract value based on data type
                                     if (dataType === 'url' && el instanceof HTMLAnchorElement) {
                                         value = el.href;
@@ -909,37 +913,37 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                                         value = el.href.replace('mailto:', '');
                                     } else {
                                         value = (el.textContent || '').trim();
-                                        
+
                                         // Clean up price values
                                         if (dataType === 'price') {
                                             value = value.replace(/[^\d.,]/g, '');
                                         }
                                     }
-                                    
+
                                     if (!value) continue;
-                                    
+
                                     // Create unique key to avoid duplicates
                                     const itemKey = `${description}:${value}`;
                                     if (seenItems.has(itemKey)) continue;
                                     seenItems.add(itemKey);
-                                    
+
                                     items.push({
                                         [description]: value
                                     });
-                                    
+
                                     // Limit results
                                     if (items.length >= 200) break;
                                 }
                             } catch (e) {
                                 console.error(`Selector failed: ${selector}`, e);
                             }
-                            
+
                             if (items.length >= 200) break;
                         }
-                        
+
                         if (items.length >= 200) break;
                     }
-                    
+
                     respond(true, {
                         items,
                         count: items.length,

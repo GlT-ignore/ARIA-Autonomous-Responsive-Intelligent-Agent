@@ -84,9 +84,9 @@ function getModelConfig(modelName: string): ModelConfig {
 	if (MODEL_CONFIGS[modelName]) {
 		return MODEL_CONFIGS[modelName];
 	}
-	
+
 	const lowerName = modelName.toLowerCase();
-	
+
 	// Try partial match (e.g., "qwen" matches "qwen/qwen-2.5-32b-instruct")
 	const partial = Object.keys(MODEL_CONFIGS).find(key => {
 		const lowerKey = key.toLowerCase();
@@ -94,16 +94,17 @@ function getModelConfig(modelName: string): ModelConfig {
 			lowerName.includes(lowerKey) ||
 			lowerName.includes(lowerKey.split('/')[1]?.split('-')[0] || '');
 	});
-	
+
 	if (partial) {
-		return MODEL_CONFIGS[partial];
+		const cfg = MODEL_CONFIGS[partial];
+		if (cfg) return cfg;
 	}
-	
+
 	// Check if it's a GLM/thinking model that needs higher token limit
-	const isThinkingModel = lowerName.includes('glm') || 
-		lowerName.includes('deepseek') || 
+	const isThinkingModel = lowerName.includes('glm') ||
+		lowerName.includes('deepseek') ||
 		lowerName.includes('r1');
-	
+
 	// Fallback defaults (higher for thinking models)
 	return {
 		temperature: 0.2,
@@ -179,15 +180,15 @@ OUTPUT (one action per line, no numbering):`;
 function getUniversalGuidance(url: string, task: string, recentActions: any[], siteApproach?: string): string {
 	const lowerTask = task.toLowerCase();
 	const lowerUrl = url.toLowerCase();
-	
+
 	// Count recent navigations
 	const recentNavs = recentActions.filter(a => a.action === 'NAVIGATE').length;
 	const lastActions = recentActions.slice(-3).map(a => a.action);
 	const allRecentNavs = lastActions.every(a => a === 'NAVIGATE' || a === 'ERROR');
-	
+
 	// Build dynamic guidance based on context
 	let guidance = '';
-	
+
 	// Include site approach if available
 	if (siteApproach) {
 		guidance += `📋 EXECUTION PLAN (from planning phase):
@@ -195,10 +196,10 @@ ${siteApproach}
 
 `;
 	}
-	
+
 	// Check if we've already navigated
 	const hasNavigated = recentActions.some(a => a.action === 'NAVIGATE' && a.ok !== false);
-	
+
 	if (hasNavigated) {
 		guidance += `🚫 NAVIGATION IS NOW DISABLED
 - You have already navigated to the planned page
@@ -209,7 +210,7 @@ ${siteApproach}
 
 `;
 	}
-	
+
 	// Check if we just typed in a search box (common YouTube pattern)
 	const recentType = recentActions.slice(-2).find(a => a.action === 'TYPE');
 	if (recentType && url.includes('youtube.com') && !url.includes('/results')) {
@@ -222,7 +223,7 @@ ${siteApproach}
 
 `;
 	}
-	
+
 	// If stuck in navigation loop, be very explicit
 	if (recentNavs >= 2 || allRecentNavs) {
 		guidance += `⚠️ STOP TRYING TO NAVIGATE!
@@ -234,7 +235,7 @@ ${siteApproach}
 
 `;
 	}
-	
+
 	// Universal SPA guidance
 	guidance += `UNIVERSAL RULES:
 1. After first NAVIGATE, NEVER navigate again - work with the current page only
@@ -243,7 +244,7 @@ ${siteApproach}
 4. If no relevant elements found after waiting, task may not be achievable
 
 `;
-	
+
 	return guidance.trim();
 }
 
@@ -270,11 +271,11 @@ export function createNextActionPrompt(params: {
 	// Get universal guidance that adapts to any site
 	const currentUrl = snapshot.url || '';
 	const guidance = getUniversalGuidance(currentUrl, task, recentSteps, siteApproach);
-	
+
 	// Add page readiness assessment
 	const meta = snapshot.metadata || {};
 	let pageAssessment = '';
-	
+
 	if (meta.totalInteractive === 0) {
 		pageAssessment = '🚨 CRITICAL: Page is COMPLETELY EMPTY (0 elements)!\n' +
 			'This site is likely blocking automation or the page failed to load.\n' +
@@ -290,7 +291,7 @@ export function createNextActionPrompt(params: {
 	const isVideoPlayback = lowerTask.includes('play') && (lowerTask.includes('video') || lowerTask.includes('youtube') || lowerTask.includes('watch'));
 	const hasTypedSearch = recentSteps.some(s => s.action === 'TYPE' && s.ok === true);
 	const hasClickedResult = recentSteps.some(s => s.action === 'CLICK' && s.ok === true && hasTypedSearch);
-	
+
 	let completionGuidance = '';
 	if (isVideoPlayback) {
 		if (!hasTypedSearch) {
@@ -301,7 +302,7 @@ export function createNextActionPrompt(params: {
 			completionGuidance = `\n🎬 VIDEO PLAYBACK TASK: You've clicked on a result. If you see a video player in the snapshot, output DONE. Otherwise, try clicking on the video thumbnail/title.`;
 		}
 	}
-	
+
 	return `You are an autonomous web agent controlling a browser via actions.
 
 GOAL: ${task}
@@ -341,14 +342,14 @@ Now choose the single best NEXT action (or DONE if goal is FULLY accomplished).`
  */
 export async function planSiteApproach(task: string): Promise<{ startUrl: string; approach: string }> {
 	const lowerTask = task.toLowerCase();
-	
+
 	// Detect task type for specialized instructions
 	const isVideoPlayback = lowerTask.includes('play') && (lowerTask.includes('video') || lowerTask.includes('youtube'));
 	const isSearch = lowerTask.includes('search');
 	const isBooking = lowerTask.includes('book') || lowerTask.includes('flight') || lowerTask.includes('hotel');
-	
+
 	let taskSpecificGuidance = '';
-	
+
 	if (isVideoPlayback) {
 		taskSpecificGuidance = `
 SPECIAL INSTRUCTIONS FOR VIDEO PLAYBACK:
@@ -373,7 +374,7 @@ SPECIAL INSTRUCTIONS FOR BOOKING/FORM TASKS:
 - Task complete when search results or booking confirmation is shown
 `;
 	}
-	
+
 	const prompt = `You are a web automation expert helping plan how to accomplish a user's task on a website.
 
 USER'S TASK: ${task}
@@ -441,14 +442,14 @@ Now provide the COMPLETE plan for: ${task}`;
 
 	try {
 		const response = await planWithLLM(prompt);
-		
+
 		// Parse response
 		const urlMatch = response.match(/START_URL:\s*(https?:\/\/[^\s\n]+)/i);
 		const approachMatch = response.match(/APPROACH:\s*([\s\S]+)/i);
-		
+
 		const startUrl = urlMatch?.[1]?.trim() || '';
 		const approach = approachMatch?.[1]?.trim() || response;
-		
+
 		return { startUrl, approach };
 	} catch (e) {
 		console.error('Failed to get site approach from LLM:', e);
@@ -461,7 +462,7 @@ Now provide the COMPLETE plan for: ${task}`;
  */
 export function optimizeSnapshot(snapshot: any): any {
 	if (!snapshot || !snapshot.elements) return snapshot;
-	
+
 	const optimized = {
 		url: snapshot.url,
 		title: snapshot.title,
@@ -482,7 +483,7 @@ export function optimizeSnapshot(snapshot: any): any {
 				guess: el.guess
 			}))
 	};
-	
+
 	return optimized;
 }
 
@@ -494,16 +495,16 @@ export function validateLLMResponse(response: string): { valid: boolean; steps: 
 	const validActions = new Set(['NAVIGATE', 'FIND', 'TYPE', 'CLICK', 'SELECT', 'WAIT', 'UPLOAD']);
 	const steps: string[] = [];
 	const errors: string[] = [];
-	
+
 	for (const line of lines) {
 		// Skip comments or explanations
 		if (line.startsWith('//') || line.startsWith('#') || line.toLowerCase().startsWith('step')) {
 			continue;
 		}
-		
+
 		// Check if line matches ACTION:TARGET:VALUE format
 		const match = line.match(/^(NAVIGATE|FIND|TYPE|CLICK|SELECT|WAIT|UPLOAD):/i);
-		if (match) {
+		if (match && match[1]) {
 			const action = match[1].toUpperCase();
 			if (validActions.has(action)) {
 				steps.push(line);
@@ -512,7 +513,7 @@ export function validateLLMResponse(response: string): { valid: boolean; steps: 
 			}
 		}
 	}
-	
+
 	return {
 		valid: steps.length > 0 && errors.length === 0,
 		steps,
@@ -526,26 +527,26 @@ export function validateLLMResponse(response: string): { valid: boolean; steps: 
  */
 export function cleanLLMOutput(text: string): string {
 	if (!text) return '';
-	
+
 	let cleaned = text;
-	
+
 	// Remove <think>...</think> blocks (GLM-4.6V-Flash reasoning)
 	cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
-	
+
 	// Remove <|begin_of_box|> and <|end_of_box|> markers (GLM output format)
 	cleaned = cleaned.replace(/<\|begin_of_box\|>/gi, '');
 	cleaned = cleaned.replace(/<\|end_of_box\|>/gi, '');
-	
+
 	// Remove <reasoning>...</reasoning> blocks (some models)
 	cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
-	
+
 	// Remove other common thinking/reasoning patterns
 	cleaned = cleaned.replace(/<\|startofthink\|>[\s\S]*?<\|endofthink\|>/gi, '');
 	cleaned = cleaned.replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '');
-	
+
 	// Trim whitespace
 	cleaned = cleaned.trim();
-	
+
 	return cleaned;
 }
 
@@ -604,6 +605,7 @@ export async function planWithCascade(
 	const tiers = getModelTiers(baseUrl, cloudEndpoint);
 	const tierIndex = Math.min(failureCount, tiers.length - 1);
 	const tier = tiers[tierIndex];
+	if (!tier) throw new Error(`Model tier not found for index ${tierIndex}`);
 
 	console.log(`Model cascade: using tier ${tierIndex} (${tier.name}) after ${failureCount} failures`);
 
@@ -660,7 +662,7 @@ async function planWithLLMInternal(
 
 	const data = await res.json();
 	const rawContent = data.choices?.[0]?.message?.content || '';
-	
+
 	// Clean up GLM-style output (removes <think>...</think>, <|begin_of_box|>, etc.)
 	const content = cleanLLMOutput(rawContent);
 
@@ -679,7 +681,7 @@ async function planWithLLMInternal(
 export async function planWithLLM(prompt: string): Promise<string> {
 	const cfg = await loadLlmConfig();
 	if (cfg.mode !== 'llm' || !cfg.baseUrl) throw new Error('LLM not configured');
-	
+
 	const modelName = cfg.model || 'llama-3.3-70b-instruct';
 	return planWithLLMInternal(prompt, modelName, cfg.baseUrl, cfg.apiKey);
 }
