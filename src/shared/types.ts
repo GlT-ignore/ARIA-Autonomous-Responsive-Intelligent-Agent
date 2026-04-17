@@ -43,6 +43,21 @@ export interface HistoryIndex {
 	[domainHash: string]: string[];
 }
 
+// Confirmation Request Types
+export interface ConfirmationRequestPayload {
+	actionType: 'purchase' | 'delete' | 'submit' | 'message' | 'payment' | 'other';
+	description: string;
+	elementText: string;
+	url: string;
+	selector?: string;
+	severity: 'high' | 'medium' | 'low';
+	details?: {
+		price?: string;
+		recipient?: string;
+		itemCount?: number;
+	};
+}
+
 
 
 

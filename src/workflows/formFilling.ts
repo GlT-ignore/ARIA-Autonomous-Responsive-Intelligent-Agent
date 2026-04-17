@@ -1,10 +1,12 @@
 /**
  * Form Filling Workflow
- * 
- * Detects form fields on a page, prompts user for data, and fills the form
+ *
+ * Detects form fields on a page, matches them to user profile, and fills the form.
+ * Supports auto-fill from saved profile and intelligent field matching.
  */
 
 import type { BusRequest, BusResponse } from '../shared/types';
+import { type UserProfile, getProfileValue, matchEmploymentType, matchWorkArrangement } from '../shared/userProfile';
 
 export interface FormField {
     selector: string;
@@ -27,150 +29,206 @@ export interface FormData {
 }
 
 /**
+ * Parse a name/id attribute into a human-readable label.
+ * Handles: camelCase, snake_case, JotForm's q3_name[first], kebab-case.
+ * e.g. "q3_name[first]" → "First Name", "phoneNumber" → "Phone Number"
+ */
+function nameAttrToLabel(name: string): string {
+    if (!name) return '';
+    // Strip JotForm-style prefixes like "q3_", "input_"
+    let cleaned = name.replace(/^q\d+_/i, '').replace(/^input_/i, '');
+    // Extract bracket content: "name[first]" → "name first"
+    cleaned = cleaned.replace(/\[([^\]]+)\]/g, ' $1');
+    // Split camelCase: "phoneNumber" → "phone Number"
+    cleaned = cleaned.replace(/([a-z])([A-Z])/g, '$1 $2');
+    // Replace underscores/hyphens with spaces
+    cleaned = cleaned.replace(/[_-]+/g, ' ');
+    // Capitalise each word
+    return cleaned
+        .trim()
+        .split(/\s+/)
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+}
+
+/** Placeholder strings that are not useful as labels */
+const GENERIC_PLACEHOLDERS = new Set([
+    'your answer', 'your-answer', 'text', 'enter text', 'type here',
+    '(000) 000-0000', '000-000-0000', 'mm/dd/yyyy', 'dd/mm/yyyy',
+    'example@example.com', 'example@mail.com', 'select', 'choose',
+    'enter value', 'enter your answer',
+]);
+
+/**
  * Detect all form fields on the current page
  */
 export function detectFormFields(snapshot: any): DetectedForm {
     const fields: FormField[] = [];
     const elements = snapshot.elements || [];
-    
+
     // Track seen selectors to avoid duplicates
     const seenSelectors = new Set<string>();
-    
-    // Build a map of page text elements that might be labels
-    // Look for text nodes that appear before input fields (likely question text)
-    const textElements: Array<{ text: string; index: number }> = [];
+
+    // Build index of label-like text elements: { text, index, forAttr }
+    const textElements: Array<{ text: string; index: number; forAttr?: string }> = [];
+    // Also build a map from id → label text for <label for="id"> matching
+    const labelForMap: Record<string, string> = {};
+
     for (let i = 0; i < elements.length; i++) {
         const el = elements[i];
-        // Collect text from divs, spans, labels, headings that might be field labels
-        if ((el.tag === 'div' || el.tag === 'span' || el.tag === 'label' || 
-             el.tag === 'h1' || el.tag === 'h2' || el.tag === 'h3' || el.tag === 'p') && 
-            el.text && el.text.trim().length > 0) {
-            textElements.push({ text: el.text.trim(), index: i });
+        const isLabelLike = el.tag === 'label' || el.tag === 'div' || el.tag === 'span' ||
+            el.tag === 'h1' || el.tag === 'h2' || el.tag === 'h3' || el.tag === 'p' ||
+            el.tag === 'li' || el.tag === 'dt';
+        if (isLabelLike && el.text && el.text.trim().length > 0) {
+            const text = el.text.trim();
+            const forAttr = el.attrs?.for || el.attrs?.htmlFor || '';
+            textElements.push({ text, index: i, forAttr });
+            if (forAttr) labelForMap[forAttr] = text;
         }
     }
-    
-    // Helper: Find better label by looking at nearby text or parent elements
+
+    /**
+     * Given an element and its snapshot index, return the best human-readable label.
+     * Priority:
+     *   1. <label for="id"> association
+     *   2. aria-label attribute
+     *   3. placeholder (if not generic)
+     *   4. title attribute
+     *   5. name/id attribute parsed to English
+     *   6. Nearby preceding text (up to 25 elements back)
+     *   7. defaultLabel
+     */
     const findBetterLabel = (el: any, elIndex: number, defaultLabel: string): string => {
         const attrs = el.attrs || {};
-        
-        // Priority order for label detection
-        const candidates = [
-            attrs.ariaLabel,
-            attrs.placeholder,
-            attrs.title
-        ].filter(Boolean);
-        
-        // Use first non-generic candidate from attributes
-        for (const candidate of candidates) {
-            const cleaned = candidate.trim();
-            if (cleaned && 
-                cleaned !== 'Your answer' && 
-                cleaned !== 'your-answer' &&
-                cleaned !== 'text') {
-                return cleaned;
+
+        // 1. Associated <label for="id">
+        const elId = attrs.id || '';
+        if (elId && labelForMap[elId]) return labelForMap[elId];
+
+        // 2. aria-label
+        if (attrs.ariaLabel) {
+            const v = attrs.ariaLabel.trim();
+            if (v && !GENERIC_PLACEHOLDERS.has(v.toLowerCase())) return v;
+        }
+
+        // 3. placeholder (only if it reads like a label, not a format hint)
+        if (attrs.placeholder) {
+            const v = attrs.placeholder.trim();
+            if (v && !GENERIC_PLACEHOLDERS.has(v.toLowerCase()) &&
+                !v.match(/^\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$/) && // phone format
+                !v.match(/^[\d\/\-]+$/)) { // date format
+                return v;
             }
         }
-        
-        // Look for nearby text elements that might be labels
-        // Check elements within 5 positions before this input (Google Forms pattern)
-        const nearbyText = textElements
-            .filter(t => t.index < elIndex && t.index >= elIndex - 5)
+
+        // 4. title
+        if (attrs.title) {
+            const v = attrs.title.trim();
+            if (v && !GENERIC_PLACEHOLDERS.has(v.toLowerCase())) return v;
+        }
+
+        // 5. name or id attribute parsed to readable label
+        const nameLabel = nameAttrToLabel(attrs.name || '') || nameAttrToLabel(elId);
+        if (nameLabel && nameLabel.length > 1) {
+            // Filter out meaningless parsed names
+            const lower = nameLabel.toLowerCase();
+            if (!lower.match(/^(input|field|text|q\d+|form|widget|element)$/)) {
+                return nameLabel;
+            }
+        }
+
+        // 6. Nearby preceding text (look back up to 25 elements — covers JotForm's deep nesting)
+        const nearby = textElements
+            .filter(t => t.index < elIndex && t.index >= elIndex - 25)
             .map(t => t.text)
             .filter(text => {
-                // Filter out common non-label text
                 const lower = text.toLowerCase();
-                return text.length > 2 && 
-                       text.length < 200 &&
-                       !lower.includes('required') &&
-                       !lower.includes('optional') &&
-                       text.includes(' ') && // Likely a phrase, not a single word
-                       text.match(/[A-Z]/) && // Has capital letters (typical for labels)
-                       !text.match(/^[a-z0-9-_]+$/); // Not HTML identifiers
+                return text.length > 1 &&
+                    text.length < 120 &&
+                    !lower.match(/^\s*\*\s*$/) &&          // asterisk-only
+                    !lower.includes('required') &&
+                    !lower.includes('optional') &&
+                    !lower.match(/^https?:\/\//) &&        // URLs
+                    !lower.match(/^\d{4}[-\/]\d{2}/) &&   // dates
+                    !lower.match(/^[a-z0-9._%+-]+@/);     // email addresses in text
             });
-        
-        // Use the closest meaningful text as the label
-        if (nearbyText.length > 0) {
-            return nearbyText[nearbyText.length - 1]; // Closest text before input
+
+        if (nearby.length > 0) {
+            // Prefer shorter strings (actual label text vs. paragraph prose)
+            const sorted = [...nearby].sort((a, b) => a.length - b.length);
+            // Use the shortest reasonable one that still has content
+            const best = sorted.find(t => t.length >= 2 && t.length <= 60) || nearby[nearby.length - 1];
+            return best;
         }
-        
+
         return defaultLabel;
     };
-    
+
     for (let i = 0; i < elements.length; i++) {
         const el = elements[i];
         const tag = el.tag;
         const attrs = el.attrs || {};
-        const selector = el.guess || `${tag}[name="${attrs.name}"]` || `#${attrs.id}`;
-        
-        // Skip if we've already processed this selector
+        const selector = el.guess || (attrs.name ? `${tag}[name="${attrs.name}"]` : '') || (attrs.id ? `#${attrs.id}` : '');
+
+        if (!selector) continue;
         if (seenSelectors.has(selector)) continue;
-        
-        // Process input fields
+
         if (tag === 'input') {
-            const inputType = attrs.type || 'text';
-            
-            // Skip submit/button/hidden/file inputs
-            if (['submit', 'button', 'hidden', 'file', 'image', 'reset'].includes(inputType)) {
-                continue;
-            }
-            
+            const inputType = (attrs.type || 'text').toLowerCase();
+            if (['submit', 'button', 'hidden', 'file', 'image', 'reset'].includes(inputType)) continue;
+
             const label = findBetterLabel(el, i, 'Text field');
-            
             fields.push({
                 selector,
                 type: inputType as any,
                 label,
                 placeholder: attrs.placeholder || undefined,
                 required: attrs.required === 'true' || attrs.ariaRequired === 'true',
-                value: attrs.value || undefined
+                value: attrs.value || undefined,
             });
-            
             seenSelectors.add(selector);
         }
-        
-        // Process textarea
+
         if (tag === 'textarea') {
             const label = findBetterLabel(el, i, 'Text area');
-            
             fields.push({
                 selector,
                 type: 'textarea',
                 label,
                 placeholder: attrs.placeholder || undefined,
                 required: attrs.required === 'true' || attrs.ariaRequired === 'true',
-                value: attrs.value || undefined
+                value: attrs.value || undefined,
             });
-            
             seenSelectors.add(selector);
         }
-        
-        // Process select
+
         if (tag === 'select') {
             const label = findBetterLabel(el, i, 'Dropdown');
-            
+            // Collect option text from nearby elements
+            const optionEls = elements.slice(i + 1, i + 30).filter((e: any) => e.tag === 'option' && e.text);
+            const options = optionEls.map((e: any) => e.text.trim()).filter(Boolean);
             fields.push({
                 selector,
                 type: 'select',
                 label,
                 required: attrs.required === 'true' || attrs.ariaRequired === 'true',
                 value: attrs.value || undefined,
-                options: [] // Would need to query options separately
+                options,
             });
-            
             seenSelectors.add(selector);
         }
     }
-    
+
     // Try to find submit button
-    const submitButton = elements.find((el: any) => 
-        (el.tag === 'button' && el.attrs.type === 'submit') ||
-        (el.tag === 'input' && el.attrs.type === 'submit') ||
-        (el.tag === 'button' && (el.text || '').toLowerCase().includes('submit'))
+    const submitButton = elements.find((el: any) =>
+        (el.tag === 'button' && el.attrs?.type === 'submit') ||
+        (el.tag === 'input' && el.attrs?.type === 'submit') ||
+        (el.tag === 'button' && /\b(submit|apply|send|continue|next)\b/i.test(el.text || ''))
     );
-    
+
     return {
         fields,
-        submitButton: submitButton?.guess || undefined
+        submitButton: submitButton?.guess || undefined,
     };
 }
 
@@ -431,6 +489,94 @@ function extractFormDataBasic(taskPrompt: string, form: DetectedForm): FormData 
 }
 
 /**
+ * Check if the user's task prompt indicates they want to use their saved profile
+ */
+export function isProfileFillIntent(taskPrompt: string): boolean {
+    const lower = taskPrompt.toLowerCase();
+    return /\b(my\s+(details?|info(rmation)?|profile|data|saved)|with\s+my|from\s+my\s+profile|auto[\s-]?fill|use\s+my)\b/i.test(lower) ||
+        /\b(fill\s+(out|in|this|the)\s+.*(form|application))\b/i.test(lower);
+}
+
+/**
+ * Match form fields to user profile data using intelligent field-label matching
+ */
+export function matchProfileToForm(profile: UserProfile, form: DetectedForm): FormData {
+    const data: FormData = {};
+
+    for (const field of form.fields) {
+        // Skip password fields - never auto-fill passwords
+        if (field.type === 'password') continue;
+
+        // For select fields, try employment type / work arrangement matching
+        if (field.type === 'select' && field.options && field.options.length > 0) {
+            const lower = field.label.toLowerCase();
+            if (/employment|job\s*type|work\s*type/i.test(lower)) {
+                const match = matchEmploymentType(profile, field.options);
+                if (match) data[field.selector] = match;
+                continue;
+            }
+            if (/work\s*arrangement|remote|hybrid|on[\s-]?site|work\s*mode/i.test(lower)) {
+                const match = matchWorkArrangement(profile, field.options);
+                if (match) data[field.selector] = match;
+                continue;
+            }
+        }
+
+        // For checkbox fields
+        if (field.type === 'checkbox') {
+            const lower = field.label.toLowerCase();
+            if (/relocat/i.test(lower)) {
+                data[field.selector] = profile.preferences.willingToRelocate;
+                continue;
+            }
+            if (/sponsor/i.test(lower)) {
+                data[field.selector] = profile.preferences.requiresSponsorship;
+                continue;
+            }
+            continue;
+        }
+
+        // Use getProfileValue — try label first, then placeholder as fallback
+        const value = getProfileValue(profile, field.label) ||
+            (field.placeholder ? getProfileValue(profile, field.placeholder) : undefined);
+        if (value && value.trim()) {
+            data[field.selector] = value;
+        }
+    }
+
+    return data;
+}
+
+/**
+ * Generate a summary of auto-filled fields for chat display
+ */
+export function generateFillSummary(form: DetectedForm, data: FormData): string {
+    const filled: string[] = [];
+    const skipped: string[] = [];
+
+    for (const field of form.fields) {
+        if (data[field.selector] !== undefined && data[field.selector] !== '') {
+            const val = String(data[field.selector]);
+            // Mask sensitive values
+            const display = field.type === 'password' ? '••••••••' :
+                /email/i.test(field.label) ? val :
+                /phone|mobile|tel/i.test(field.label) ? val.replace(/(\d{3})\d{4}(\d{3})/, '$1****$2') :
+                /ssn|social|card|cvv|cvc/i.test(field.label) ? '••••••••' :
+                val;
+            filled.push(`  ${field.label}: ${display}`);
+        } else {
+            skipped.push(`  ${field.label} (no match)`);
+        }
+    }
+
+    let summary = `Form Auto-Fill Summary:\n`;
+    summary += `Filled ${filled.length}/${form.fields.length} fields:\n`;
+    if (filled.length > 0) summary += filled.join('\n') + '\n';
+    if (skipped.length > 0) summary += `\nSkipped:\n` + skipped.join('\n');
+    return summary;
+}
+
+/**
  * Collect form data from the dialog (for missing fields only)
  */
 export function collectFormData(form: DetectedForm): FormData | null {
@@ -475,21 +621,23 @@ async function sendToActive(type: string, payload: any): Promise<BusResponse> {
  */
 export async function fillFormWithData(form: DetectedForm, data: FormData, log: (msg: any) => void): Promise<void> {
     log({ status: 'Starting form filling', fieldsCount: Object.keys(data).length });
-    
+
     for (const [selector, value] of Object.entries(data)) {
         const field = form.fields.find(f => f.selector === selector);
         if (!field) continue;
-        
+
         try {
             if (field.type === 'checkbox') {
-                // Click checkbox if value is true
                 if (value === true) {
                     log({ action: 'CLICK', selector, field: field.label });
                     await sendToActive('CLICK', { selector });
                     await new Promise(r => setTimeout(r, 300));
                 }
+            } else if (field.type === 'select') {
+                log({ action: 'SELECT', selector, value, field: field.label });
+                await sendToActive('SELECT', { selector, value: value as string });
+                await new Promise(r => setTimeout(r, 300));
             } else {
-                // Type into text field
                 log({ action: 'TYPE', selector, value, field: field.label });
                 await sendToActive('TYPE', { selector, text: value as string });
                 await new Promise(r => setTimeout(r, 300));
@@ -498,20 +646,45 @@ export async function fillFormWithData(form: DetectedForm, data: FormData, log: 
             log({ error: `Failed to fill ${field.label}`, details: String(error) });
         }
     }
-    
-    log({ status: 'Form filling complete' });
-    
-    // Optionally click submit button
+
+    log({ status: 'Form filling complete - pausing before submit (destructive action detected)' });
+
+    // Use the safety confirmation system instead of confirm()
     if (form.submitButton) {
-        const shouldSubmit = confirm('Form filled successfully. Do you want to submit it now?');
-        if (shouldSubmit) {
-            try {
-                log({ action: 'CLICK', selector: form.submitButton, purpose: 'Submit form' });
+        try {
+            const { conversation } = await import('../shared/conversation.js');
+            const { requestConfirmation, createConfirmationRequest } = await import('../shared/confirmations.js');
+
+            const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+            const currentUrl = tabs[0]?.url || '';
+
+            const confirmRequest = createConfirmationRequest(
+                'Submit form',
+                currentUrl,
+                form.submitButton,
+                {},
+                { formData: data }
+            );
+            // Override to submit type with medium severity for proper safety messaging
+            confirmRequest.actionType = 'submit';
+            confirmRequest.severity = 'medium';
+            confirmRequest.description = 'Submit the filled form';
+
+            conversation.addAssistantMessage(
+                'Form filled successfully. Pausing before submit — this is a destructive action that cannot be undone.'
+            );
+
+            const confirmed = await requestConfirmation(confirmRequest);
+
+            if (confirmed) {
+                log({ action: 'CLICK', selector: form.submitButton, purpose: 'Submit form (confirmed)' });
                 await sendToActive('CLICK', { selector: form.submitButton });
                 log({ status: 'Form submitted' });
-            } catch (error) {
-                log({ error: 'Failed to submit form', details: String(error) });
+            } else {
+                log({ status: 'Form submission cancelled by user' });
             }
+        } catch (error) {
+            log({ error: 'Failed during submit confirmation', details: String(error) });
         }
     }
 }

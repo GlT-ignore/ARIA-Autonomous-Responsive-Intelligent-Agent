@@ -1,107 +1,185 @@
-# ARIA - Autonomous Responsive Intelligent Agent
+<p align="center">
+  <img src="https://img.shields.io/badge/Chrome-Extension-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome Extension" />
+  <img src="https://img.shields.io/badge/Manifest-V3-34A853?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Manifest V3" />
+  <img src="https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://img.shields.io/badge/Vite-7.x-646CFF?style=for-the-badge&logo=vite&logoColor=white" alt="Vite" />
+  <img src="https://img.shields.io/badge/License-ISC-green?style=for-the-badge" alt="License" />
+</p>
 
-A Chrome extension that automates web tasks using AI planning and intelligent element detection. Built for Samsung Web Agentic AI demonstration.
+# ARIA — Autonomous Responsive Intelligent Agent
 
-## 🎯 What It Does
+> **Your personal AI assistant that lives inside Chrome.** Tell it what to do in plain English — it navigates, searches, clicks, types, fills out forms, extracts data, and more — all while you watch.
 
-ARIA is a Chrome extension that can understand natural language commands and execute them on websites. It can navigate, search, click, type, and interact with web pages automatically.
+ARIA is a Chrome side-panel extension that converts **natural-language instructions** into autonomous browser actions. It uses an LLM (or falls back to heuristic patterns) to understand any website, plan multi-step workflows, and execute them in real time with full visual feedback.
 
-**Tested and verified commands**:
-- "Search for lofi hip hop on YouTube"
-- "Search for iPhone 15 Pro Max on Amazon"
-- "Search for wireless headphones on Amazon"
-- "Search for cats on YouTube"
+---
 
-## ✨ Key Features
+## ✨ Feature Highlights
 
-- **Dual-Mode Operation**: 
-  - **Heuristic Mode**: Quick start option for testing
-  - **LLM Mode**: Enhanced intelligent operation across all websites using AI to understand page structure
-- **Smart Element Detection**: Finds buttons, inputs, and links using semantic matching
-- **Shadow DOM Support**: Works with modern web components
-- **Live Progress Tracking**: See each step as it executes
-- **Automatic Fallback**: Robust error handling and retry mechanisms
+| Category | What You Get |
+|---|---|
+| **Chat-First UI** | Conversational side panel — just type (or speak) what you need |
+| **Dual-Mode Engine** | *Heuristic* mode for instant testing, *LLM* mode for full autonomy on any site |
+| **Voice Input** | Hands-free task entry via browser speech recognition (`Ctrl+M`) |
+| **Smart Element Detection** | Three strategies — DOM/text matching, Accessibility Tree, and Vision — with automatic fallback |
+| **Stealth Mode** | Injects into the page context *before* site scripts run to avoid bot detection |
+| **Agent Loop** | Multi-step AI planning that observes the page after each action and adapts |
+| **Active Tab Indicators** | Pulsing cyan border + floating badge shows you exactly which tab ARIA is controlling |
+| **Form Auto-Fill** | Save your profile once; ARIA fills job applications, signups, and more |
+| **Data Extraction** | Pull structured data from pages (tables, lists, product info) |
+| **Page Summarization** | Get AI-powered summaries of any webpage |
+| **Task History** | Every task is logged with success metrics — export as JSON anytime |
+| **Safety Guardrails** | Confirmation prompts for destructive actions (purchases, deletions, submissions) |
+| **Keyboard Shortcuts** | `Enter` send · `Ctrl+.` stop · `Ctrl+M` voice · `Ctrl+Enter` run |
+| **Accessibility** | Skip-nav links, ARIA roles, `aria-live` regions, screen-reader-friendly |
+
+---
 
 ## 🚀 Quick Start
 
-### Step 1: Install Dependencies
+### 1 · Install & Build
 
 ```bash
-# Clone or download this repository
-cd ARIA-Autonomous-Responsive-Intelligent-Agent
-
-# Install dependencies
+git clone <repo-url> && cd WAH_COD3INE
 npm install
-
-# Build the extension
-npm run build
+npm run build          # production build → dist/
 ```
 
-### Step 2: Load Extension in Chrome
+### 2 · Load in Chrome
 
-1. Open Chrome and go to `chrome://extensions/`
-2. Enable **"Developer mode"** (toggle in top-right corner)
-3. Click **"Load unpacked"**
-4. Select the `dist` folder from this project
+1. Navigate to `chrome://extensions/`
+2. Turn on **Developer mode** (top-right toggle)
+3. Click **Load unpacked** → select the `dist/` folder
+4. ARIA appears as a side panel icon in your toolbar
 
-### Step 3: Configure LLM for Efficient Operation
+### 3 · Try It Instantly (No API Key Needed)
 
-**Important**: To use ARIA efficiently across all websites, configure an LLM API key.
+Open the side panel and type:
 
-#### Quick Test Mode (Optional)
-For initial testing with YouTube and Amazon, you can:
-1. Click the ARIA extension icon in Chrome toolbar
-2. Side panel opens on the right
-3. In "LLM Settings" section, select **"Heuristic (no LLM)"** for quick testing
-4. Try: `Search for cats on YouTube` or `Search for iPhone 15 Pro Max on Amazon`
+```
+Search for lofi hip hop on YouTube
+```
 
-However, for full functionality and efficient operation on all websites, please configure LLM mode (see below).
+ARIA defaults to **Heuristic mode** — it recognizes common patterns on YouTube, Amazon, Google, and more without any LLM configuration.
 
-## 🧪 Tested & Working Use Cases
+### 4 · Unlock Full Power (LLM Mode)
 
-### ✅ YouTube Search (Heuristic Mode)
+For intelligent automation on *any* website, configure an LLM:
 
-**Command**: `Search for [anything] on YouTube`
+1. Click the **⚙ Settings** gear in the side panel header (opens the Options page)
+2. Set **AI Mode** → `Smart Mode (AI Powered)`
+3. Enter your **API Endpoint** and **API Key**
+4. Pick a **Model** and click **Save**
 
-**Examples**:
-- "Search for lofi hip hop on YouTube"
-- "Search for coding tutorials on YouTube"
-- "Search for funny cat videos on YouTube"
+| Provider | Endpoint | Recommended Model |
+|---|---|---|
+| [OpenRouter](https://openrouter.ai/) | `https://openrouter.ai/api/v1` | `qwen/qwen-2.5-32b-instruct` |
+| [Ollama](https://ollama.ai/) (local, free) | `http://localhost:11434/v1` | `qwen2.5:32b` |
+| LM Studio | `http://localhost:1234/v1` | (your loaded model) |
+| Any OpenAI-compatible API | varies | varies |
 
-**What it does**:
-1. Navigates to https://www.youtube.com
-2. Waits for page to load completely
-3. Finds the search input box
-4. Types your search query
-5. Clicks the search button
-6. Shows you the results
+> **Tip:** Use the **Test Connection** button on the Options page to verify your setup before running tasks.
 
-### ✅ Amazon Search (Heuristic Mode)
+---
 
-**Command**: `Search for [product] on Amazon`
+## 🏗️ Architecture
 
-**Examples**:
-- "Search for iPhone 15 Pro Max on Amazon"
-- "Search for wireless headphones on Amazon"
-- "Search for laptop stand on Amazon"
+```
+┌─────────────────────────────────────────────────────┐
+│  Side Panel (Chat UI)                               │
+│  panel.html → panel/index.ts                        │
+│    ├── taskExecutor    — runs steps sequentially     │
+│    ├── stepParser      — converts LLM text → steps  │
+│    ├── settingsManager — loads config from storage   │
+│    ├── voice           — Web Speech API integration  │
+│    └── uiState         — manages DOM + chat bubbles  │
+├─────────────────────────────────────────────────────┤
+│  Background Service Worker (background.ts)          │
+│    — routes messages between panel ↔ content script  │
+│    — opens side panel on icon click                  │
+├─────────────────────────────────────────────────────┤
+│  Content Script (content.ts)                        │
+│    — DOM interaction: find, click, type, scroll      │
+│    — Element detection (heuristic / a11y / vision)   │
+│    — Stealth-inject companion for bot evasion        │
+│    — Active-tab overlay + highlight animations       │
+├─────────────────────────────────────────────────────┤
+│  Shared Modules (shared/)                           │
+│    ├── llmClient          — OpenAI-compatible API    │
+│    ├── visionClient       — screenshot-based detect  │
+│    ├── storage            — Chrome storage helpers    │
+│    ├── userProfile        — profile CRUD             │
+│    ├── safety             — destructive-action guard  │
+│    ├── confirmations      — user confirmation flows   │
+│    ├── conversation       — chat context management   │
+│    ├── sessionMemory      — cross-step memory         │
+│    ├── sitePatterns       — per-site heuristic rules  │
+│    ├── communityPatterns  — crowd-sourced patterns     │
+│    ├── taskClassifier     — intent classification     │
+│    ├── taskMatcher        — history-based matching     │
+│    ├── actionClassifier   — action type inference     │
+│    ├── accessibilitySnapshot — a11y tree capture      │
+│    ├── infoGathering      — page information extract  │
+│    ├── stealth            — anti-detection utilities   │
+│    └── telemetry          — anonymous usage metrics    │
+├─────────────────────────────────────────────────────┤
+│  Workflows (workflows/)                             │
+│    ├── formFilling        — multi-field form entry    │
+│    ├── dataExtraction     — structured data scraping  │
+│    └── summarization      — page summary generation   │
+├─────────────────────────────────────────────────────┤
+│  Options Page (options.html + options.ts)            │
+│    — AI config, profile, task history, keyboard info  │
+└─────────────────────────────────────────────────────┘
+```
 
-**What it does**:
-1. Navigates to https://www.amazon.com
-2. Waits for page to load
-3. Finds the search input box
-4. Types your product query
-5. Clicks the search button
-6. Shows you the results
+### Message Flow
 
-## 🤖 LLM Integration (Required for Efficient Multi-Site Operation)
+```
+User Input → Side Panel → Background Worker → Content Script → DOM
+                ↑                                      ↓
+                └──────── Progress / Results ───────────┘
+```
 
-To use ARIA efficiently across all websites, configure an LLM API key.
+### Supported Actions
 
-### Important: Add Your Own LLM API Key
+| Action | Description |
+|---|---|
+| `NAVIGATE` | Open a URL in the active tab |
+| `FIND` | Locate an element by semantic description |
+| `TYPE` | Enter text into an input / textarea |
+| `CLICK` | Click a button, link, or any element |
+| `WAIT` | Wait for an element or condition to appear |
+| `HIGHLIGHT` | Visual pulse on the target element |
+| `SCROLL` | Scroll to a position or element |
+| `EXTRACT` | Pull data from the page |
 
 ARIA does **not** include any API keys. You must provide your own LLM API key for optimal performance across different websites.
 
-### Option 1: OpenRouter (Easiest)
+### Option 1: Together AI (Recommended for Speed & Performance)
+
+Together AI offers the fastest inference for open-source models, making the agent feel much snappier.
+
+1. Sign up at [together.ai](https://www.together.ai/)
+2. Get your API key from the dashboard
+3. In ARIA side panel:
+   - **Mode**: Select "LLM via proxy"
+   - **Base URL**: `https://api.together.ai/v1`
+   - **API Key**: Paste your Together AI API key
+   - **Model**: `meta-llama/Llama-3.3-70B-Instruct-Turbo` (Recommended Serverless)
+4. Click **"Save"**
+
+**Recommended Serverless Models:**
+- **Llama 3.3 70B Turbo** (`meta-llama/Llama-3.3-70B-Instruct-Turbo`):
+  - **Best Value**: ~$0.88 per 1M tokens (much cheaper than typical 70B models).
+  - **Performance**: Excellent reasoning and full **Tool Calling** support.
+  - **Speed**: Very fast inference.
+- **Qwen 2.5 Coder 32B**: Good alternative for coding-specific tasks.
+- **DeepSeek V3**: Strong reasoning capabilities.
+
+> **Note:** We highly recommend **Llama 3.3 70B Turbo** for the best balance of performance and cost.
+
+### Option 2: OpenRouter (Easiest & Most Flexible)
 
 1. Sign up at [openrouter.ai](https://openrouter.ai/)
 2. Get your API key from the dashboard
@@ -109,17 +187,10 @@ ARIA does **not** include any API keys. You must provide your own LLM API key fo
    - **Mode**: Select "LLM via proxy"
    - **Base URL**: `https://openrouter.ai/api/v1`
    - **API Key**: Paste your OpenRouter API key
-   - **Model**: `qwen/qwen-2.5-32b-instruct` (recommended, Apache 2.0 license)
+   - **Model**: `qwen/qwen-2.5-72b-instruct` (recommended)
 4. Click **"Save"**
 
-**Recommended Models** (all open-source with permissive licenses):
-- `qwen/qwen-2.5-32b-instruct` (Apache 2.0) - Best overall
-- `mistralai/mixtral-8x7b-instruct` (Apache 2.0) - Fast
-- `meta-llama/llama-3.3-70b-instruct` (Llama 3 license)
-
-### Option 2: Ollama (Local, Free)
-
-Run models locally on your machine:
+### Option 3: Ollama (Local, Free)
 
 1. Install Ollama from [ollama.ai](https://ollama.ai/)
 2. Download a model: `ollama pull qwen2.5:32b`
@@ -131,10 +202,9 @@ Run models locally on your machine:
    - **Model**: `qwen2.5:32b`
 5. Click **"Save"**
 
-### Option 3: Other LLM Providers
+### Option 4: Other LLM Providers
 
 You can use any OpenAI-compatible API:
-- Together AI
 - Anyscale
 - Replicate
 - Your own vLLM/LM Studio server
@@ -144,138 +214,65 @@ Just configure the Base URL, API Key, and Model name accordingly.
 ## 📁 Project Structure
 
 ```
-ARIA-Autonomous-Responsive-Intelligent-Agent/
+WAH_COD3INE/
 ├── src/
-│   ├── manifest.ts          # Chrome extension manifest
-│   ├── background.ts         # Service worker (message routing)
-│   ├── content.ts            # Content script (DOM interaction)
-│   ├── panel.ts              # Side panel logic
-│   ├── panel.html            # Side panel UI
-│   └── shared/
-│       ├── types.ts          # TypeScript interfaces
-│       ├── storage.ts        # Chrome storage helpers
-│       └── llmClient.ts      # LLM API client
-├── dist/                     # Build output (load this in Chrome)
+│   ├── manifest.ts              # MV3 manifest definition
+│   ├── background.ts            # Service worker
+│   ├── content.ts               # Content script (DOM interaction)
+│   ├── stealth-inject.ts        # Pre-page-load stealth injection
+│   ├── panel.html               # Side panel UI shell
+│   ├── panel/                   # Side panel modules
+│   │   ├── index.ts             # Entry point
+│   │   ├── taskExecutor.ts      # Step execution engine
+│   │   ├── stepParser.ts        # LLM response → action steps
+│   │   ├── settingsManager.ts   # Config loader
+│   │   ├── voice.ts             # Speech-to-text
+│   │   ├── uiState.ts           # UI DOM management
+│   │   ├── historyManager.ts    # Chat history
+│   │   ├── profileManager.ts    # Profile UI binding
+│   │   └── styles/main.css      # Design system
+│   ├── shared/                  # Shared utilities (18 modules)
+│   ├── workflows/               # Complex task workflows
+│   ├── options.html             # Full-page settings UI
+│   ├── options.ts               # Options page logic
+│   └── analytics.html           # Usage analytics page
+├── tests/                       # Vitest test suite
+├── dist/                        # Build output (load this in Chrome)
 ├── package.json
 ├── tsconfig.json
 ├── vite.config.ts
 └── README.md
 ```
 
-## 🏗️ Architecture
-
-### How It Works
-
-1. **User Input**: You type a command in the side panel
-2. **Task Planning**:
-   - **Heuristic Mode**: Quick pattern-based approach for testing
-   - **LLM Mode**: AI analyzes the page and generates intelligent steps for all websites
-3. **Execution**: Content script executes steps one by one
-4. **Feedback**: Progress displayed in real-time
-
-### Message Flow
-
-```
-Side Panel (UI) → Background Script → Content Script → DOM
-     ↑                                        ↓
-     └────────── Progress Updates ────────────┘
-```
-
-### Supported Actions
-
-- **NAVIGATE**: Go to a URL
-- **FIND**: Locate an element by description
-- **TYPE**: Enter text into an input field
-- **CLICK**: Click a button or link
-- **WAIT**: Wait for an element to appear
-- **HIGHLIGHT**: Visual feedback on found elements
+---
 
 ## 🔧 Development
 
-### Build Commands
-
 ```bash
-npm install          # Install dependencies
-npm run build        # Build for production
-npm run dev          # Build with watch mode
+npm install          # install dependencies
+npm run dev          # dev server with HMR + watch
+npm run build        # production build → dist/
+npm run test         # run Vitest test suite
 ```
 
-### Extending Functionality
-
-You can extend ARIA by customizing pattern recognition in `src/panel.ts` or enhancing the LLM prompts for better page understanding. The modular architecture allows for easy customization and extension of supported actions and workflows.
-
-## 🐛 Troubleshooting
-
-### "Element not found" errors
-
-- Configure LLM mode for better element detection across all websites
-- Reload the page after reloading the extension
-- Try the command again
-
-### LLM returns no steps
-
-- Check that you've entered your API key correctly
-- Verify the API key has credits (for paid services)
-- Check browser console for errors (F12)
-- Try a different model if the current one isn't responding
-
-### "Could not establish connection" errors
-
-- Reload the page after loading the extension
-- Make sure the extension is enabled in `chrome://extensions/`
-- Try clicking the extension icon again
-
-### Page not loading completely
-
-- Increase the wait timeout in `src/content.ts` (default 8 seconds)
-- Some websites may need longer to stabilize
-
-## 📜 Licenses
-
-### This Project
-
-Built with open-source tools under permissive licenses:
-- **TypeScript** (Apache 2.0)
-- **Vite** (MIT)
-- **Chrome Extension APIs** (Google)
-
-### Recommended LLMs
-
-Use open-source models with permissive licenses:
-- **Qwen 2.5** (Apache 2.0) - Recommended
-- **Mixtral** (Apache 2.0)
-- **Phi-3** (MIT)
-- **Llama 3.3** (Llama 3 Community License)
-
-⚠️ **Note**: OpenAI models are NOT recommended due to closed-source and restrictive licensing.
-
-## 🎥 Demo
-
-Try these verified commands to see ARIA in action:
-
-1. **YouTube Search**: "Search for lofi hip hop on YouTube"
-2. **Amazon Search**: "Search for mechanical keyboard on Amazon"
-
-For best results across all websites, configure LLM mode with your API key.
-
-## 🙏 Credits
-
-Built for Samsung Web Agentic AI demonstration.
-
-**Technologies Used**:
-- Chrome Extension Manifest V3
-- TypeScript
-- Vite + @crxjs/vite-plugin
-- Chrome APIs (storage, scripting, sidePanel, tabs)
+After building, reload the extension in `chrome://extensions/` to pick up changes.
 
 ---
 
-## 📞 Support
+## 🐛 Troubleshooting
 
-If you encounter issues:
-1. Check the **Troubleshooting** section above
-2. Ensure your LLM API key is configured correctly for multi-site operation
-3. Make sure the extension is properly loaded in Chrome
-4. Try reloading both the extension and the page
+| Problem | Fix |
+|---|---|
+| **"Element not found"** | Switch to **LLM mode** for better detection, or reload the page after installing the extension |
+| **LLM returns no steps** | Verify API key + credits · check the browser console (F12) · try a different model |
+| **"Could not establish connection"** | Reload the page · re-enable the extension in `chrome://extensions/` |
+| **Page loads slowly** | Increase the wait timeout in `content.ts` (default 8 s) |
+| **Voice input not working** | Make sure your browser allows microphone access · use Chrome (best support) |
 
-**Recommendation**: For the best experience across all websites, configure **LLM mode** with your API key!
+---
+
+## 📜 License
+
+ISC — see `package.json`.
+
+Built with **TypeScript**, **Vite**, **@crxjs/vite-plugin**, and the **Chrome Extension APIs (Manifest V3)**.

@@ -26,9 +26,10 @@ export interface ExtractedData {
 async function sendToActive(type: string, payload: any): Promise<BusResponse> {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tabs[0]?.id) throw new Error('No active tab');
-    
-    const req: BusRequest = { type, payload, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
-    const response = await chrome.tabs.sendMessage(tabs[0].id, req);
+
+    const req: BusRequest = { type, payload, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, target: 'activeTab' };
+    // frameId: 0 = main frame only (ad iframes on Amazon/Google would respond first otherwise)
+    const response = await chrome.tabs.sendMessage(tabs[0].id, req, { frameId: 0 });
     return response as BusResponse;
 }
 
@@ -42,7 +43,7 @@ export async function identifyExtractionTargets(userInput: string, snapshot: any
         text: el.text?.slice(0, 100),
         attrs: el.attrs
     }));
-    
+
     const prompt = `You are a data extraction specialist. The user wants to extract data from a web page.
 
 USER REQUEST: "${userInput}"
@@ -76,22 +77,22 @@ Now analyze for: "${userInput}"`;
 
     try {
         const response = await planWithLLM(prompt);
-        
+
         // Parse response
         const targets: ExtractionTarget[] = [];
         const targetBlocks = response.split(/TARGET_\d+:/i).filter(Boolean);
-        
+
         for (const block of targetBlocks) {
             const descMatch = block.match(/DESCRIPTION:\s*(.+?)(?:\n|$)/i);
             const selectorsMatch = block.match(/SELECTORS:\s*(.+?)(?:\n|$)/i);
             const dataTypeMatch = block.match(/DATA_TYPE:\s*(text|number|url|email|price)/i);
-            
-            if (descMatch && selectorsMatch) {
+
+            if (descMatch && selectorsMatch && descMatch[1] && selectorsMatch[1]) {
                 const selectors = selectorsMatch[1]
                     .split(',')
                     .map(s => s.trim())
                     .filter(Boolean);
-                
+
                 targets.push({
                     description: descMatch[1].trim(),
                     selectors,
@@ -99,12 +100,12 @@ Now analyze for: "${userInput}"`;
                 });
             }
         }
-        
+
         // Fallback: use heuristics if LLM didn't return good results
         if (targets.length === 0) {
             targets.push(...heuristicExtractionTargets(userInput));
         }
-        
+
         return targets;
     } catch (error) {
         console.error('Target identification failed:', error);
@@ -118,7 +119,7 @@ Now analyze for: "${userInput}"`;
 function heuristicExtractionTargets(userInput: string): ExtractionTarget[] {
     const lower = userInput.toLowerCase();
     const targets: ExtractionTarget[] = [];
-    
+
     if (lower.includes('price')) {
         targets.push({
             description: 'Prices',
@@ -126,7 +127,7 @@ function heuristicExtractionTargets(userInput: string): ExtractionTarget[] {
             dataType: 'price'
         });
     }
-    
+
     if (lower.includes('name') || lower.includes('title')) {
         targets.push({
             description: 'Names/Titles',
@@ -134,7 +135,7 @@ function heuristicExtractionTargets(userInput: string): ExtractionTarget[] {
             dataType: 'text'
         });
     }
-    
+
     if (lower.includes('email')) {
         targets.push({
             description: 'Email addresses',
@@ -142,7 +143,7 @@ function heuristicExtractionTargets(userInput: string): ExtractionTarget[] {
             dataType: 'email'
         });
     }
-    
+
     if (lower.includes('link') || lower.includes('url')) {
         targets.push({
             description: 'Links',
@@ -150,7 +151,7 @@ function heuristicExtractionTargets(userInput: string): ExtractionTarget[] {
             dataType: 'url'
         });
     }
-    
+
     // If no specific match, try generic text extraction
     if (targets.length === 0) {
         targets.push({
@@ -159,7 +160,7 @@ function heuristicExtractionTargets(userInput: string): ExtractionTarget[] {
             dataType: 'text'
         });
     }
-    
+
     return targets;
 }
 
@@ -169,17 +170,17 @@ function heuristicExtractionTargets(userInput: string): ExtractionTarget[] {
 export async function extractDataFromPage(targets: ExtractionTarget[]): Promise<ExtractedData> {
     try {
         const response = await sendToActive('EXTRACT_DATA', { targets });
-        
+
         if (response.success && response.data) {
             return response.data as ExtractedData;
         }
-        
+
         throw new Error('Data extraction failed');
     } catch (error) {
         console.error('Data extraction failed:', error);
-        
+
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-        
+
         return {
             items: [],
             count: 0,
@@ -203,10 +204,11 @@ export function generateExtractionHTML(data: ExtractedData, targets: ExtractionT
             </div>
         `;
     }
-    
+
     // Determine columns from first item
-    const columns = Object.keys(data.items[0]);
-    
+    const firstItem = data.items[0];
+    const columns = firstItem ? Object.keys(firstItem) : [];
+
     const tableRows = data.items.slice(0, 100).map((item, idx) => {
         const cells = columns.map(col => {
             let value = item[col];
@@ -215,17 +217,17 @@ export function generateExtractionHTML(data: ExtractedData, targets: ExtractionT
             }
             return `<td style="padding:8px; border-bottom:1px solid #e5e7eb; font-size:13px;">${value || '-'}</td>`;
         }).join('');
-        
+
         return `<tr style="background:${idx % 2 === 0 ? '#fff' : '#f9fafb'}">${cells}</tr>`;
     }).join('');
-    
-    const headerCells = columns.map(col => 
+
+    const headerCells = columns.map(col =>
         `<th style="padding:8px; text-align:left; background:#f3f4f6; font-weight:600; font-size:13px; border-bottom:2px solid #d1d5db;">${col}</th>`
     ).join('');
-    
+
     const date = new Date(data.extractedAt).toLocaleString();
     const showingText = data.items.length > 100 ? ` (showing first 100 of ${data.items.length})` : '';
-    
+
     return `
         <div id="extraction-result" style="background:#fff; border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin-top:12px;">
             <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
@@ -268,10 +270,12 @@ export function generateExtractionHTML(data: ExtractedData, targets: ExtractionT
  */
 export function dataToCSV(data: ExtractedData): string {
     if (data.items.length === 0) return '';
-    
-    const columns = Object.keys(data.items[0]);
+
+    const firstItem = data.items[0];
+    if (!firstItem) return '';
+    const columns = Object.keys(firstItem);
     const header = columns.join(',');
-    
+
     const rows = data.items.map(item => {
         return columns.map(col => {
             let value = item[col];
@@ -281,7 +285,7 @@ export function dataToCSV(data: ExtractedData): string {
             return value;
         }).join(',');
     });
-    
+
     return [header, ...rows].join('\n');
 }
 
@@ -291,24 +295,24 @@ export function dataToCSV(data: ExtractedData): string {
 export async function executeDataExtractionWorkflow(userInput: string, snapshot: any, log: (msg: any) => void): Promise<ExtractedData> {
     log({ status: 'Identifying extraction targets...' });
     const targets = await identifyExtractionTargets(userInput, snapshot);
-    
-    log({ 
+
+    log({
         status: 'Targets identified',
         targets: targets.map(t => t.description)
     });
-    
+
     if (targets.length === 0) {
         throw new Error('Could not identify what data to extract from the page');
     }
-    
+
     log({ status: 'Extracting data from page...' });
     const data = await extractDataFromPage(targets);
-    
-    log({ 
+
+    log({
         status: 'Data extracted',
         itemsFound: data.count
     });
-    
+
     return data;
 }
 
