@@ -2,12 +2,31 @@ import { type BusRequest, type BusResponse } from './shared/types';
 import { enableStealthMode, needsStealthMode } from './shared/stealth';
 
 (() => {
-    console.log('WebPilot content loaded');
-    
+    console.log('ARIA content loaded');
+
     // Enable stealth mode for sites with anti-bot protection
     if (needsStealthMode(window.location.href)) {
         console.log('[Stealth] Enabling anti-detection for:', window.location.hostname);
         enableStealthMode();
+    }
+
+    // Snapshot cache (Phase 5)
+    let cachedSnapshot: any = null;
+    let snapshotDirty = true;
+    let dirtyTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const snapshotObserver = new MutationObserver(() => {
+        if (dirtyTimeout) clearTimeout(dirtyTimeout);
+        dirtyTimeout = setTimeout(() => { snapshotDirty = true; }, 100);
+    });
+
+    if (document.body || document.documentElement) {
+        snapshotObserver.observe(document.body || document.documentElement, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            characterData: true,
+        });
     }
 
     // Recursively find element across all shadow roots
@@ -28,18 +47,147 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
         return null;
     };
 
+    // Common search button selectors for fallback
+    const SEARCH_BUTTON_SELECTORS = [
+        'button[aria-label*="Search" i]',
+        'button#search-icon-legacy', // YouTube
+        'button#search-icon-ios',    // YouTube mobile
+        'ytd-searchbox button',      // YouTube wrapper
+        'input#nav-search-submit-button', // Amazon
+        'button#nav-search-submit-button', // Amazon
+        'button[type="submit"]',
+        'input[type="submit"][value*="Search" i]',
+        'form[role="search"] button',
+        'button:has(svg)',           // Many sites use icon buttons
+    ];
+
+    const findSearchButton = (): HTMLElement | null => {
+        for (const sel of SEARCH_BUTTON_SELECTORS) {
+            const btn = queryDeep(sel);
+            if (btn && isInteractable(btn)) return btn as HTMLElement;
+        }
+        return null;
+    };
+
     const click = (selector: string) => {
         let el = queryDeep(selector) as HTMLElement | null;
         if (!el) {
             // Try self-healing selectors
             el = tryFuzzySelectors(selector) as HTMLElement | null;
         }
+
+        // If still not found and selector looks like a search button, try semantic fallback
+        if (!el && /search/i.test(selector)) {
+            console.log('[ARIA] Selector not found, trying search button fallback for:', selector);
+            el = findSearchButton();
+        }
+
         if (!el) throw new Error('Element not found');
+
+        // Smart search button detection: if clicking on a search input, find and click the search button instead
+        if (el.tagName.toLowerCase() === 'input' &&
+            (el.getAttribute('type') === 'search' ||
+                el.getAttribute('aria-label')?.toLowerCase().includes('search') ||
+                el.getAttribute('placeholder')?.toLowerCase().includes('search') ||
+                el.getAttribute('name')?.toLowerCase().includes('search'))) {
+
+            console.log('[ARIA] Detected search input click - searching for search button instead');
+
+            // Look for search button near the search input
+            const parent = el.parentElement;
+            if (parent) {
+                for (const btnSelector of SEARCH_BUTTON_SELECTORS) {
+                    const btn = parent.querySelector(btnSelector) || queryDeep(btnSelector);
+                    if (btn && isInteractable(btn)) {
+                        console.log('[ARIA] Found search button:', btnSelector);
+                        el = btn as HTMLElement;
+                        break;
+                    }
+                }
+            }
+        }
+
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         const rect = el.getBoundingClientRect();
         const x = rect.left + rect.width / 2;
         const y = rect.top + rect.height / 2;
+
+        // Dispatch synthetic events
+        el.dispatchEvent(new MouseEvent('mouseover', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+        el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+        el.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
         el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, clientX: x, clientY: y }));
+
+        // Native click as fallback
+        if (typeof el.click === 'function') {
+            el.click();
+        }
+
+        // If it's a known container or custom element, try to find and click its primary link
+        const tagName = el.tagName.toLowerCase();
+        if (tagName.includes('-') || ['div', 'li', 'article', 'section', 'tr'].includes(tagName)) {
+            const mainLink = el.querySelector('a#thumbnail, a#video-title-link, a#video-title, a[id*="title"], a.title, a:has(img), a:has(h3)') || el.querySelector('a[href], button');
+            if (mainLink && mainLink !== el) {
+                console.log('[ARIA] Found primary link inside container, natively clicking it:', mainLink);
+                (mainLink as HTMLElement).click();
+            }
+        }
+
+        return true;
+    };
+
+    const pressEnter = async (selector: string) => {
+        let el = queryDeep(selector) as HTMLElement | null;
+        if (!el) {
+            el = tryFuzzySelectors(selector) as HTMLElement | null;
+        }
+
+        if (!el && /search/i.test(selector)) {
+            el = findSearchButton();
+        }
+
+        if (!el) throw new Error('Element not found for PRESS_ENTER');
+
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        el.focus();
+
+        // Dispatch synthetic enter events
+        el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true }));
+        el.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true }));
+        el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+
+        console.log('[ARIA] Dispatched sequence of Enter key events');
+
+        await new Promise(r => setTimeout(r, 100));
+
+        // Submit form natively
+        const form = el.closest('form');
+        if (form) {
+            console.log('[ARIA] Found parent form, submitting natively');
+            // Try to click submit button first
+            const submitBtn = form.querySelector('button[type="submit"], input[type="submit"]');
+            if (submitBtn) {
+                (submitBtn as HTMLElement).click();
+            } else {
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit();
+                } else {
+                    form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+                    form.submit();
+                }
+            }
+        } else {
+            console.log('[ARIA] No parent form found, looking for nearby search button');
+            const parent = el.parentElement || el;
+            for (const btnSelector of SEARCH_BUTTON_SELECTORS) {
+                const btn = parent.querySelector(btnSelector) || queryDeep(btnSelector);
+                if (btn && isInteractable(btn)) {
+                    console.log('[ARIA] Found search button nearby, clicking it', btnSelector);
+                    (btn as HTMLElement).click();
+                    break;
+                }
+            }
+        }
         return true;
     };
 
@@ -73,8 +221,45 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
             (target as any).isContentEditable === true || target.getAttribute('contenteditable') === 'true';
 
         if (isContentEditable) {
-            // Replace content in one shot and fire input/change.
-            (target as HTMLElement).textContent = text;
+            // Rich text editors (ProseMirror, Tiptap, Slate, etc.) ignore direct
+            // textContent changes. Use execCommand('insertText') which most editors
+            // intercept via their beforeinput/input handlers.
+            const htmlTarget = target as HTMLElement;
+
+            // Clear existing content first
+            const selection = window.getSelection();
+            if (selection && htmlTarget.childNodes.length > 0) {
+                const range = document.createRange();
+                range.selectNodeContents(htmlTarget);
+                selection.removeAllRanges();
+                selection.addRange(range);
+                document.execCommand('delete', false);
+            } else {
+                htmlTarget.textContent = '';
+            }
+
+            // Try execCommand first (works with ProseMirror, Tiptap, etc.)
+            htmlTarget.focus();
+            const inserted = document.execCommand('insertText', false, text);
+
+            if (!inserted || htmlTarget.textContent?.trim() !== text.trim()) {
+                // Fallback: dispatch InputEvent with insertText type
+                htmlTarget.textContent = '';
+                const inputEvent = new InputEvent('beforeinput', {
+                    inputType: 'insertText',
+                    data: text,
+                    bubbles: true,
+                    cancelable: true,
+                    composed: true
+                });
+                htmlTarget.dispatchEvent(inputEvent);
+
+                // If still empty, force textContent as last resort
+                if (!htmlTarget.textContent?.trim()) {
+                    htmlTarget.textContent = text;
+                }
+            }
+
             dispatchInputEvents(target);
             return true;
         }
@@ -93,6 +278,43 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
             // ignore
         }
         dispatchInputEvents(el);
+
+        // For search inputs, press Enter to submit instead of just dismissing autocomplete.
+        // This ensures the search works even if the CLICK step on the search button fails.
+        const isSearchInput =
+            el.getAttribute('type') === 'search' ||
+            el.getAttribute('role') === 'searchbox' ||
+            el.getAttribute('aria-label')?.toLowerCase().includes('search') ||
+            el.getAttribute('placeholder')?.toLowerCase().includes('search') ||
+            el.getAttribute('name')?.toLowerCase().includes('search') ||
+            el.closest('form[role="search"]') !== null ||
+            el.closest('ytd-searchbox') !== null;
+
+        if (isSearchInput) {
+            await new Promise(r => setTimeout(r, 200));
+            el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true }));
+            el.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true, cancelable: true }));
+            el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+            console.log('[ARIA] Auto-submitted search input via Enter key');
+        } else {
+            // For autocomplete fields (city pickers, address fields, etc.), do NOT dismiss
+            // the dropdown - the agent needs to click a suggestion from it.
+            // Only dismiss for plain text inputs that are unlikely to have meaningful dropdowns.
+            const isAutocomplete =
+                el.getAttribute('role') === 'combobox' ||
+                el.getAttribute('aria-autocomplete') !== null ||
+                el.getAttribute('aria-expanded') === 'true' ||
+                el.getAttribute('aria-haspopup') === 'listbox' ||
+                el.getAttribute('aria-haspopup') === 'true' ||
+                el.closest('[role="combobox"]') !== null;
+
+            if (!isAutocomplete) {
+                await new Promise(r => setTimeout(r, 300));
+                el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+                el.dispatchEvent(new KeyboardEvent('keyup', { key: 'Escape', code: 'Escape', bubbles: true }));
+            }
+        }
+
         return true;
     };
 
@@ -106,34 +328,79 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
         check();
     });
 
-    const highlight = (selector: string) => {
+    const highlight = (selector: string, label?: string) => {
         let el = queryDeep(selector) as HTMLElement | null;
         if (!el) {
-            // Try self-healing selectors
             el = tryFuzzySelectors(selector) as HTMLElement | null;
         }
         if (!el) throw new Error('Element not found');
         const rect = el.getBoundingClientRect();
-        const overlayId = '__webpilot_overlay__';
+
+        // Remove previous highlight
+        const overlayId = '__aria_overlay__';
         document.getElementById(overlayId)?.remove();
+        document.getElementById(overlayId + '_tooltip')?.remove();
+
+        // Highlight box with ARIA brand color
         const box = document.createElement('div');
         box.id = overlayId;
-        box.style.position = 'fixed';
-        box.style.left = `${Math.max(0, rect.left)}px`;
-        box.style.top = `${Math.max(0, rect.top)}px`;
-        box.style.width = `${Math.max(0, rect.width)}px`;
-        box.style.height = `${Math.max(0, rect.height)}px`;
-        box.style.border = '2px solid #4f46e5';
-        box.style.borderRadius = '4px';
-        box.style.zIndex = '2147483647';
-        box.style.pointerEvents = 'none';
+        box.style.cssText = `
+            position: fixed;
+            left: ${Math.max(0, rect.left - 3)}px;
+            top: ${Math.max(0, rect.top - 3)}px;
+            width: ${Math.max(0, rect.width + 6)}px;
+            height: ${Math.max(0, rect.height + 6)}px;
+            border: 2px solid #06b6d4;
+            border-radius: 6px;
+            z-index: 2147483647;
+            pointer-events: none;
+            box-shadow: 0 0 12px rgba(6, 182, 212, 0.4), inset 0 0 8px rgba(6, 182, 212, 0.1);
+            animation: ariaHighlightPulse 1s ease-in-out 2;
+        `;
         document.body.appendChild(box);
-        setTimeout(() => box.remove(), 1000);
+
+        // Tooltip label (if provided)
+        if (label) {
+            const tooltip = document.createElement('div');
+            tooltip.id = overlayId + '_tooltip';
+            tooltip.textContent = `ARIA: ${label}`;
+            tooltip.style.cssText = `
+                position: fixed;
+                left: ${Math.max(0, rect.left)}px;
+                top: ${Math.max(0, rect.top - 28)}px;
+                background: linear-gradient(135deg, #06b6d4, #14b8a6);
+                color: white; font-size: 11px; font-weight: 600;
+                padding: 3px 10px; border-radius: 4px;
+                z-index: 2147483647; pointer-events: none;
+                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            `;
+            document.body.appendChild(tooltip);
+        }
+
+        // Inject pulse animation if not present
+        if (!document.getElementById('__aria_highlight_styles__')) {
+            const style = document.createElement('style');
+            style.id = '__aria_highlight_styles__';
+            style.textContent = `
+                @keyframes ariaHighlightPulse {
+                    0%, 100% { box-shadow: 0 0 12px rgba(6,182,212,0.4), inset 0 0 8px rgba(6,182,212,0.1); }
+                    50% { box-shadow: 0 0 20px rgba(6,182,212,0.6), inset 0 0 12px rgba(6,182,212,0.2); }
+                }
+            `;
+            document.head.appendChild(style);
+        }
+
+        // Remove after 2 seconds
+        setTimeout(() => {
+            box.remove();
+            document.getElementById(overlayId + '_tooltip')?.remove();
+        }, 2000);
         return true;
     };
 
     // Edge case handlers
-    
+
     /**
      * Dismiss modals and popups automatically
      */
@@ -207,16 +474,16 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
             const originalXHR = window.XMLHttpRequest;
 
             // Monitor fetch requests
-            window.fetch = async (...args) => {
+            window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
                 lastActivity = Date.now();
-                return originalFetch(...args);
+                return originalFetch(input, init);
             };
 
             // Monitor XHR requests
             const originalOpen = originalXHR.prototype.open;
-            originalXHR.prototype.open = function (...args) {
+            (originalXHR.prototype as any).open = function (method: string, url: string | URL, ...args: any[]) {
                 lastActivity = Date.now();
-                return originalOpen.apply(this, args);
+                return (originalOpen as any).apply(this, [method, url, ...args]);
             };
 
             // Check for idle
@@ -290,25 +557,26 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
         let pendingFetch = 0;
         let lastMutation = Date.now();
         const originalFetch = window.fetch;
-        window.fetch = function(...args) {
+        window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
             pendingFetch++;
-            return originalFetch.apply(this, args).finally(() => { pendingFetch--; });
+            return originalFetch.apply(this, [input, init]).finally(() => { pendingFetch--; });
         };
         const obs = new MutationObserver(() => { lastMutation = Date.now(); });
         obs.observe(document.body, { childList: true, subtree: true });
         const check = () => {
             const elapsed = performance.now() - start;
             if (elapsed > timeout) {
-                console.log(`[WebPilot] Page ready timeout after ${elapsed}ms (network idle: ${pendingFetch === 0}, DOM settled: ${Date.now() - lastMutation}ms ago)`);
+                console.log(`[ARIA] Page ready timeout after ${elapsed}ms (network idle: ${pendingFetch === 0}, DOM settled: ${Date.now() - lastMutation}ms ago). Proceeding anyway.`);
                 window.fetch = originalFetch;
                 obs.disconnect();
                 resolve(true);
                 return;
             }
-            // Wait for 800ms of DOM stability for SPAs (faster execution)
-            const idle = pendingFetch === 0 && (Date.now() - lastMutation > 800);
+            // Wait for 500ms of DOM stability (faster execution)
+            // Allow up to 2 pending fetches to account for background analytics/tracking
+            const idle = pendingFetch <= 2 && (Date.now() - lastMutation > 500);
             if (idle && document.readyState === 'complete') {
-                console.log(`[WebPilot] Page ready in ${elapsed}ms`);
+                console.log(`[ARIA] Page ready in ${elapsed}ms`);
                 window.fetch = originalFetch;
                 obs.disconnect();
                 resolve(true);
@@ -320,95 +588,105 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
     });
 
     // Build a simplified DOM snapshot for LLM selector generation
-    const allDeep = (root: Document | ShadowRoot): Element[] => {
+    // Collect candidates from shadow roots as well
+    const queryCandidatesDeep = (root: Document | ShadowRoot, selector: string): Element[] => {
         const acc: Element[] = [];
-        const walk = (node: Document | ShadowRoot | Element) => {
-            let iter: Iterable<Element> = [];
-            if ((node as Document | ShadowRoot).querySelectorAll) {
-                iter = (node as Document | ShadowRoot).querySelectorAll('*');
-            }
-            for (const el of iter) {
-                acc.push(el);
-                const sr = (el as HTMLElement).shadowRoot;
-                if (sr) walk(sr);
-            }
-        };
-        walk(root);
+        try {
+            acc.push(...Array.from(root.querySelectorAll(selector)));
+        } catch { /* ignore invalid selector */ }
+        // Walk shadow roots
+        for (const host of Array.from(root.querySelectorAll('*'))) {
+            const sr = (host as HTMLElement).shadowRoot;
+            if (sr) acc.push(...queryCandidatesDeep(sr, selector));
+        }
         return acc;
     };
 
     const buildSnapshot = () => {
-        const candidatesSelector = 'button, a, input, select, textarea, [role="button"], [aria-label], [onclick]';
-        const allElements = allDeep(document);
-        console.log(`[WebPilot] Building snapshot: ${allElements.length} total elements`);
-        
-        const elements = allElements
-            .filter((el) => {
-                if (!(el as Element).matches?.(candidatesSelector)) return false;
-                const rect = (el as HTMLElement).getBoundingClientRect?.();
-                const computed = getComputedStyle(el as HTMLElement);
-                return rect && rect.width > 0 && rect.height > 0 && computed.visibility !== 'hidden' && computed.display !== 'none';
-            })
-            .slice(0, 200)
-            .map((el) => {
-                const rect = (el as HTMLElement).getBoundingClientRect?.();
-                const text = ((el as HTMLElement).innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
-                const attrs: Record<string, string | null> = {
-                    id: (el as HTMLElement).id || null,
-                    name: (el as HTMLElement).getAttribute('name'),
-                    type: (el as HTMLElement).getAttribute('type'),
-                    role: (el as HTMLElement).getAttribute('role'),
-                    ariaLabel: (el as HTMLElement).getAttribute('aria-label'),
-                    placeholder: (el as HTMLInputElement).placeholder || null,
-                    value: (el as HTMLInputElement).value || null,
-                    title: (el as HTMLElement).title || null,
-                    classes: (el as HTMLElement).className?.toString() || null,
-                };
-                const guess = getUniqueSelector(el) || '';
-                return {
-                    tag: el.tagName.toLowerCase(),
-                    attrs,
-                    text,
-                    rect: rect ? { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) } : null,
-                    guess,
-                };
-            });
-        
-        // Add metadata to help LLM understand if page is loaded/useful
-        const inputCount = elements.filter(e => e.tag === 'input').length;
-        const buttonCount = elements.filter(e => e.tag === 'button' || e.attrs.role === 'button').length;
-        const linkCount = elements.filter(e => e.tag === 'a').length;
-        const hasSearchBox = elements.some(e => 
-            e.tag === 'input' && 
-            (e.attrs.type === 'search' || 
-             e.attrs.placeholder?.toLowerCase().includes('search') ||
-             e.attrs.ariaLabel?.toLowerCase().includes('search'))
-        );
-        const hasForm = document.querySelector('form') !== null;
-        
-        console.log(`[WebPilot] Snapshot: ${elements.length} interactive elements found on ${location.href}`);
-        console.log(`[WebPilot] Page stats: ${inputCount} inputs, ${buttonCount} buttons, ${linkCount} links, hasSearchBox=${hasSearchBox}, hasForm=${hasForm}`);
-        console.log(`[WebPilot] Sample elements:`, elements.slice(0, 5).map(e => ({
-            tag: e.tag,
-            id: e.attrs.id,
-            placeholder: e.attrs.placeholder,
-            text: e.text?.slice(0, 30)
-        })));
-        
-        return { 
-            url: location.href, 
-            title: document.title, 
-            elements,
-            metadata: {
-                totalInteractive: elements.length,
-                inputCount,
-                buttonCount,
-                linkCount,
-                hasSearchBox,
-                hasForm,
-                readyState: document.readyState
-            }
-        };
+        try {
+            const candidatesSelector = 'button, a, input, select, textarea, [role="button"], [role="option"], [role="listbox"] li, [role="listbox"], [role="combobox"], [aria-label], [onclick]';
+            // Query targeted candidates only — much faster than walking all elements
+            const allElements = queryCandidatesDeep(document, candidatesSelector);
+            console.log(`[ARIA] Building snapshot: ${allElements.length} candidate elements`);
+
+            const elements = allElements
+                .filter((el) => {
+                    const computed = getComputedStyle(el as HTMLElement);
+                    if (computed.visibility === 'hidden' || computed.display === 'none') return false;
+
+                    const rect = (el as HTMLElement).getBoundingClientRect?.();
+                    // In headless or background tabs, rect might be 0x0. Don't strictly filter it 
+                    // out if it has meaningful content or is off-screen.
+                    if (rect && rect.width === 0 && rect.height === 0) {
+                        // Keep <input> and <button> elements even if 0x0 (common in headless)
+                        const tag = el.tagName.toLowerCase();
+                        if (tag !== 'input' && tag !== 'button' && tag !== 'select' && tag !== 'textarea') {
+                            return false;
+                        }
+                    }
+                    return true;
+                })
+                .slice(0, 200)
+                .map((el) => {
+                    const htmlEl = el as HTMLElement;
+                    const rect = htmlEl.getBoundingClientRect?.();
+                    const text = (htmlEl.innerText || el.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+                    // Use getAttribute('class') to avoid SVGAnimatedString crash on SVG elements
+                    const rawClass = htmlEl.getAttribute('class') || '';
+                    const attrs: Record<string, string | null> = {
+                        id: htmlEl.id || null,
+                        name: htmlEl.getAttribute('name'),
+                        type: htmlEl.getAttribute('type'),
+                        role: htmlEl.getAttribute('role'),
+                        ariaLabel: htmlEl.getAttribute('aria-label'),
+                        placeholder: (el as HTMLInputElement).placeholder || null,
+                        value: (el as HTMLInputElement).value || null,
+                        title: htmlEl.title || null,
+                        classes: rawClass || null,
+                    };
+                    const guess = getUniqueSelector(el) || '';
+                    return {
+                        tag: el.tagName.toLowerCase(),
+                        attrs,
+                        text,
+                        rect: rect ? { x: Math.round(rect.left), y: Math.round(rect.top), w: Math.round(rect.width), h: Math.round(rect.height) } : null,
+                        guess,
+                    };
+                });
+
+            // Add metadata to help LLM understand if page is loaded/useful
+            const inputCount = elements.filter(e => e.tag === 'input').length;
+            const buttonCount = elements.filter(e => e.tag === 'button' || e.attrs.role === 'button').length;
+            const linkCount = elements.filter(e => e.tag === 'a').length;
+            const hasSearchBox = elements.some(e =>
+                e.tag === 'input' &&
+                (e.attrs.type === 'search' ||
+                    e.attrs.placeholder?.toLowerCase().includes('search') ||
+                    e.attrs.ariaLabel?.toLowerCase().includes('search'))
+            );
+            const hasForm = document.querySelector('form') !== null;
+
+            console.log(`[ARIA] Snapshot: ${elements.length} interactive elements found on ${location.href}`);
+            console.log(`[ARIA] Page stats: ${inputCount} inputs, ${buttonCount} buttons, ${linkCount} links, hasSearchBox=${hasSearchBox}, hasForm=${hasForm}`);
+
+            return {
+                url: location.href,
+                title: document.title,
+                elements,
+                metadata: {
+                    totalInteractive: elements.length,
+                    inputCount,
+                    buttonCount,
+                    linkCount,
+                    hasSearchBox,
+                    hasForm,
+                    readyState: document.readyState
+                }
+            };
+        } catch (e) {
+            console.error('[ARIA] buildSnapshot failed:', e);
+            return { url: location.href, title: document.title, elements: [], metadata: { totalInteractive: 0, inputCount: 0, buttonCount: 0, linkCount: 0, hasSearchBox: false, hasForm: false, readyState: document.readyState } };
+        }
     };
 
     // Multi-strategy element finder
@@ -419,11 +697,13 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
     };
 
     // Modern site patterns (2024) - inlined for content script
-    const getModernPatterns = (): Record<string, Record<string, string[]>> => {
+    const getModernPatterns = (): Record<string, string[]> => {
         const hostname = location.hostname.toLowerCase().replace(/^www\./, '');
         const patterns: Record<string, Record<string, string[]>> = {
             'youtube.com': {
                 'video tile': ['ytd-rich-item-renderer a#thumbnail', 'ytd-video-renderer a#thumbnail', 'ytd-grid-video-renderer a.yt-simple-endpoint', 'a#video-title-link'],
+                'first video result': ['ytd-video-renderer:first-of-type a#thumbnail', 'ytd-item-section-renderer ytd-video-renderer:first-child a#thumbnail', 'ytd-video-renderer a#thumbnail', 'a#video-title-link', 'ytd-rich-item-renderer a#thumbnail'],
+                'first video': ['ytd-video-renderer:first-of-type a#thumbnail', 'ytd-item-section-renderer ytd-video-renderer:first-child a#thumbnail', 'ytd-video-renderer a#thumbnail', 'a#video-title-link'],
                 'search box': ['input#search', 'ytd-searchbox input', 'input[aria-label="Search"]', 'input[name="search_query"]'],
                 'search button': ['button#search-icon-legacy', 'button[aria-label="Search"]', 'ytd-searchbox button#search-icon-legacy'],
                 'subscribe button': ['ytd-subscribe-button-renderer button', 'button[aria-label*="Subscribe"]'],
@@ -472,18 +752,50 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
             'stackoverflow.com': {
                 'search box': ['input[name="q"]', 'input[placeholder*="Search"]'],
                 'upvote button': ['button[aria-label*="Up vote"]', 'button.js-vote-up-btn']
+            },
+            'google.com': {
+                'search box': ['textarea[name="q"]', 'input[name="q"]', 'input[title="Search"]'],
+                'search button': ['input[name="btnK"]', 'button[aria-label="Google Search"]', 'button[jsname="Tg7LZd"]'],
+                'result title': ['h3']
+            },
+            'google.co.in': {
+                'search box': ['textarea[name="q"]', 'input[name="q"]', 'input[title="Search"]'],
+                'search button': ['input[name="btnK"]', 'button[aria-label="Google Search"]', 'button[jsname="Tg7LZd"]'],
+                'result title': ['h3']
+            },
+            'mail.google.com': {
+                // Gmail compose window Send button
+                'send button': [
+                    'div[aria-label="Send ‪"]',
+                    'div[aria-label="Send"]',
+                    '.T-I.J-J5-Ji.aoO',
+                    '.aoO',
+                    '[data-tooltip="Send"]',
+                    '[data-tooltip*="Send"]',
+                    'div[role="button"].T-I.aoO',
+                ],
+                'gmail send button': [
+                    'div[aria-label="Send ‪"]',
+                    'div[aria-label="Send"]',
+                    '.T-I.J-J5-Ji.aoO',
+                    '.aoO',
+                ],
+                'compose button': ['div[gh="cm"]', '.T-I.T-I-KE', 'div[aria-label="Compose"]'],
+                'search box': ['input[aria-label="Search mail"]', 'input[name="q"]'],
+                'reply button': ['button[data-tooltip*="Reply"]', '.T-I.J-J5-Ji.ams'],
             }
         };
-        
-        return patterns[hostname] || patterns[hostname.split('.').slice(-2).join('.')] || {};
+
+        const result = patterns[hostname] || patterns[hostname.split('.').slice(-2).join('.')] || {};
+        return (result as unknown) as Record<string, string[]>;
     };
 
     const findBySemantic = (desc: string): Element | null => {
         const lower = desc.toLowerCase();
         const modernPatterns = getModernPatterns();
-        
+
         const preferInputs = /(box|input|field|bar)/.test(lower);
-        
+
         // Site-specific: YouTube search input often lives inside ytd-searchbox shadow root
         if (preferInputs && /search/.test(lower) && location.hostname.includes('youtube')) {
             const host = document.querySelector('ytd-searchbox') as any;
@@ -493,28 +805,29 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 if (isInteractable(ytInput)) return ytInput as Element;
             }
         }
-        
+
         // Try modern patterns first
         for (const [key, selectors] of Object.entries(modernPatterns)) {
             if (lower.includes(key) || key.includes(lower)) {
-                for (const sel of selectors) {
+                for (const sel of (selectors as any)) {
                     const el = queryDeep(sel);
                     if (!isInteractable(el)) continue;
                     if (preferInputs && (el as HTMLElement).tagName.toLowerCase() !== 'input' && (el as HTMLElement).tagName.toLowerCase() !== 'textarea') continue;
-                    return el!;
+                    return el;
                 }
             }
         }
-        
+
         // Fallback to generic patterns
         const fallbackMapping: Record<string, string[]> = {
+            'first video result': ['ytd-video-renderer a#thumbnail', 'ytd-item-section-renderer ytd-video-renderer a#thumbnail', 'a#video-title-link', 'ytd-rich-item-renderer a#thumbnail'],
+            'first video': ['ytd-video-renderer a#thumbnail', 'a#video-title-link', 'ytd-rich-item-renderer a#thumbnail'],
             'search box': ['input[aria-label*="Search" i]', 'input[type="search"]', 'input[placeholder*="Search" i]', 'input[name*="search" i]'],
             'search button': ['button[aria-label*="Search" i]', 'button[type="submit"]', 'input[type="submit"][value*="Search" i]'],
             'submit button': ['button[type="submit"]', 'input[type="submit"]', 'button:has-text("Submit")'],
             'login button': ['button[type="submit"]', 'button:has-text("Log in")', 'button:has-text("Sign in")'],
             'close button': ['button[aria-label*="Close" i]', 'button.close', '[data-dismiss="modal"]']
         };
-        
         const entries = Object.entries(fallbackMapping).sort((a, b) => b[0].length - a[0].length);
         for (const [key, selectors] of entries) {
             if (lower.includes(key)) {
@@ -526,7 +839,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 }
             }
         }
-        
+
         return null;
     };
 
@@ -627,6 +940,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
         const strategies = [
             () => queryDeep(selector),
             () => queryDeep(selector.replace(/\s+/g, '')),
+            () => (selector.startsWith('#') || selector.startsWith('.')) ? queryDeep(selector.slice(1)) : null,
             () => findByPartialId(selector),
             () => findByPartialClass(selector),
             () => findByAriaLabel(selector),
@@ -680,16 +994,16 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
         if (cls) return `${el.tagName.toLowerCase()}.${cls}`;
         return null;
     };
-    
+
     // Enhanced form field detection
     const findByFormContext = (desc: string): Element | null => {
         const lower = desc.toLowerCase();
-        
+
         // Find labels containing description
-        const labels = Array.from(document.querySelectorAll('label')).filter(el => 
+        const labels = Array.from(document.querySelectorAll('label')).filter(el =>
             (el.textContent || '').toLowerCase().includes(lower)
         );
-        
+
         for (const label of labels) {
             // Check for label[for] association
             const forAttr = label.getAttribute('for');
@@ -697,12 +1011,12 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 const input = document.getElementById(forAttr);
                 if (isInteractable(input)) return input!;
             }
-            
+
             // Check for nested input
             const nested = label.querySelector('input, select, textarea');
             if (isInteractable(nested)) return nested!;
         }
-        
+
         // Check for placeholder match
         const inputs = Array.from(document.querySelectorAll('input, select, textarea'));
         for (const input of inputs) {
@@ -711,7 +1025,7 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 return input;
             }
         }
-        
+
         // Check for aria-describedby
         for (const input of inputs) {
             const describedBy = (input as HTMLElement).getAttribute('aria-describedby');
@@ -722,73 +1036,187 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 }
             }
         }
-        
+
         return null;
     };
-    
+
     // Select dropdown option by value or text
     const selectOption = async (selector: string, value: string) => {
         const el = queryDeep(selector) as HTMLSelectElement | null;
         if (!el) throw new Error('Select element not found');
-        
+
         // Try by value first
         for (let i = 0; i < el.options.length; i++) {
-            if (el.options[i].value === value) {
+            const opt = el.options[i];
+            if (opt && opt.value === value) {
                 el.selectedIndex = i;
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 return true;
             }
         }
-        
+
         // Try by text
         for (let i = 0; i < el.options.length; i++) {
-            if (el.options[i].text.toLowerCase().includes(value.toLowerCase())) {
+            const opt = el.options[i];
+            if (opt && opt.text.toLowerCase().includes(value.toLowerCase())) {
                 el.selectedIndex = i;
                 el.dispatchEvent(new Event('change', { bubbles: true }));
                 return true;
             }
         }
-        
+
         throw new Error(`Option "${value}" not found in select`);
     };
-    
+
     // File upload simulation (limited in extensions)
     const uploadFile = async (selector: string, fileName: string) => {
         const el = queryDeep(selector) as HTMLInputElement | null;
         if (!el || el.type !== 'file') throw new Error('File input not found');
-        
+
         // Note: Cannot programmatically set files due to security restrictions
         // This will highlight the element for user to manually select file
         el.scrollIntoView({ block: 'center', behavior: 'smooth' });
         el.focus();
-        
+
         // Store filename hint for user
         const hint = document.createElement('div');
         hint.textContent = `Please select: ${fileName}`;
         hint.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);background:#ff9800;color:#fff;padding:12px 24px;border-radius:4px;z-index:999999;font-size:14px;';
         document.body.appendChild(hint);
-        
+
         await new Promise(resolve => setTimeout(resolve, 5000));
         hint.remove();
-        
+
         return true;
     };
 
-    chrome.runtime.onMessage.addListener((raw: BusRequest, _sender, sendResponse) => {
+    chrome.runtime.onMessage.addListener((raw: BusRequest, _sender: any, sendResponse: (response?: any) => void) => {
         const { type: msgType, payload } = raw || {} as BusRequest;
         const respond = (ok: boolean, data?: unknown, error?: string) => sendResponse({ id: raw?.id, success: ok, data, error } as BusResponse);
 
         try {
+            // ARIA Active indicator overlay (Phase 2)
+            if (msgType === 'ARIA_ACTIVE') {
+                // Remove existing overlay if any
+                document.getElementById('__aria_active_overlay__')?.remove();
+                document.getElementById('__aria_active_badge__')?.remove();
+
+                // 1. Border glow overlay
+                const overlay = document.createElement('div');
+                overlay.id = '__aria_active_overlay__';
+                overlay.style.cssText = `
+                    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                    border: 3px solid #06b6d4;
+                    box-shadow: inset 0 0 30px rgba(6, 182, 212, 0.15), 0 0 15px rgba(6, 182, 212, 0.3);
+                    pointer-events: none;
+                    z-index: 2147483646;
+                    animation: ariaPulse 2s ease-in-out infinite;
+                `;
+                document.body.appendChild(overlay);
+
+                // 2. Floating badge
+                const badge = document.createElement('div');
+                badge.id = '__aria_active_badge__';
+                badge.textContent = 'ARIA Active';
+                badge.style.cssText = `
+                    position: fixed; top: 12px; right: 12px;
+                    background: linear-gradient(135deg, #06b6d4 0%, #14b8a6 100%);
+                    color: white; font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                    font-size: 12px; font-weight: 600;
+                    padding: 6px 14px; border-radius: 20px;
+                    pointer-events: none; z-index: 2147483647;
+                    box-shadow: 0 4px 12px rgba(6, 182, 212, 0.4);
+                    animation: ariaBadgeFade 0.3s ease-out;
+                `;
+                document.body.appendChild(badge);
+
+                // 3. Inject animation keyframes (only once)
+                if (!document.getElementById('__aria_active_styles__')) {
+                    const style = document.createElement('style');
+                    style.id = '__aria_active_styles__';
+                    style.textContent = `
+                        @keyframes ariaPulse {
+                            0%, 100% { border-color: #06b6d4; box-shadow: inset 0 0 30px rgba(6,182,212,0.15), 0 0 15px rgba(6,182,212,0.3); }
+                            50% { border-color: #14b8a6; box-shadow: inset 0 0 40px rgba(20,184,166,0.2), 0 0 20px rgba(20,184,166,0.4); }
+                        }
+                        @keyframes ariaBadgeFade {
+                            from { opacity: 0; transform: translateY(-8px); }
+                            to { opacity: 1; transform: translateY(0); }
+                        }
+                    `;
+                    document.head.appendChild(style);
+                }
+
+                respond(true, { active: true });
+                return true;
+            }
+
+            if (msgType === 'ARIA_INACTIVE') {
+                document.getElementById('__aria_active_overlay__')?.remove();
+                document.getElementById('__aria_active_badge__')?.remove();
+                respond(true, { active: false });
+                return true;
+            }
+
+            if (msgType === 'ARIA_STEP_UPDATE') {
+                const badge = document.getElementById('__aria_active_badge__');
+                if (badge) {
+                    const step = (payload as any)?.step || 0;
+                    const total = (payload as any)?.total || 0;
+                    badge.textContent = total > 0 ? `ARIA Step ${step}/${total}` : 'ARIA Active';
+                }
+                respond(true);
+                return true;
+            }
+
+            // SCROLL handler (Phase 6)
+            if (msgType === 'SCROLL') {
+                const direction = (payload as any)?.direction || 'down';
+                const amount = (payload as any)?.amount || window.innerHeight * 0.8;
+                window.scrollBy({ top: direction === 'up' ? -amount : amount, behavior: 'smooth' });
+                respond(true, { scrolled: direction });
+                return true;
+            }
+
+            // GO_BACK handler (voice command)
+            if (msgType === 'GO_BACK') {
+                history.back();
+                respond(true, { navigated: 'back' });
+                return true;
+            }
+
             if (msgType === 'ANALYZE_PAGE') {
                 respond(true, { url: location.href, title: document.title });
                 return true;
             }
             if (msgType === 'CLICK') {
+                snapshotDirty = true;
                 respond(true, click((payload as any).selector));
                 return true;
             }
+            if (msgType === 'PRESS_ENTER') {
+                pressEnter((payload as any).selector).then((r) => { snapshotDirty = true; respond(true, r); }).catch((e) => respond(false, undefined, String(e)));
+                return true;
+            }
             if (msgType === 'TYPE') {
-                typeText((payload as any).selector, (payload as any).text).then((r) => respond(true, r)).catch((e) => respond(false, undefined, String(e)));
+                typeText((payload as any).selector, (payload as any).text).then((r) => { snapshotDirty = true; respond(true, r); }).catch((e) => respond(false, undefined, String(e)));
+                return true;
+            }
+            if (msgType === 'CHECK_AUTOCOMPLETE') {
+                try {
+                    const el = queryDeep((payload as any).selector) as HTMLElement | null;
+                    const isAutocomplete = !!el && (
+                        el.getAttribute('role') === 'combobox' ||
+                        el.getAttribute('aria-autocomplete') !== null ||
+                        el.getAttribute('aria-expanded') === 'true' ||
+                        el.getAttribute('aria-haspopup') === 'listbox' ||
+                        el.getAttribute('aria-haspopup') === 'true' ||
+                        el.closest('[role="combobox"]') !== null
+                    );
+                    respond(true, { isAutocomplete });
+                } catch (e) {
+                    respond(true, { isAutocomplete: false });
+                }
                 return true;
             }
             if (msgType === 'WAIT') {
@@ -796,10 +1224,11 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 return true;
             }
             if (msgType === 'HIGHLIGHT') {
-                respond(true, highlight((payload as any).selector));
+                respond(true, highlight((payload as any).selector, (payload as any).label));
                 return true;
             }
             if (msgType === 'NAVIGATE') {
+                snapshotDirty = true;
                 respond(true, navigate(String((payload as any).url || '')));
                 return true;
             }
@@ -818,7 +1247,20 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 return true;
             }
             if (msgType === 'SNAPSHOT') {
-                respond(true, buildSnapshot());
+                const isForce = (payload as any)?.force === true;
+                if (!snapshotDirty && cachedSnapshot && !isForce) {
+                    respond(true, cachedSnapshot);
+                    return true;
+                }
+                try {
+                    const snapshot = buildSnapshot();
+                    cachedSnapshot = snapshot;
+                    snapshotDirty = false;
+                    respond(true, snapshot);
+                } catch (e) {
+                    console.error('[ARIA] SNAPSHOT handler error:', e);
+                    respond(false, undefined, String(e));
+                }
                 return true;
             }
             if (msgType === 'SELECT') {
@@ -836,38 +1278,38 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 respond(true, { selector: sel });
                 return true;
             }
-            
+
             // EXTRACT_CONTENT: Extract readable page content for summarization
             if (msgType === 'EXTRACT_CONTENT') {
                 try {
                     const title = document.title;
                     const url = location.href;
-                    
+
                     // Extract main text content
                     const mainContentSelectors = ['article', 'main', '[role="main"]', '.content', '.post', '.article'];
                     let mainElement: Element | null = null;
-                    
+
                     for (const selector of mainContentSelectors) {
                         mainElement = document.querySelector(selector);
                         if (mainElement) break;
                     }
-                    
-                    const textSource = mainElement || document.body;
+
+                    const textSource = (mainElement || document.body) as HTMLElement;
                     const mainText = textSource.innerText || textSource.textContent || '';
-                    
+
                     // Extract headings
                     const headings = Array.from(document.querySelectorAll('h1, h2, h3, h4'))
                         .map(h => h.textContent?.trim())
                         .filter(Boolean);
-                    
+
                     // Extract key points (list items)
                     const keyPoints = Array.from(document.querySelectorAll('article li, main li, .content li'))
                         .slice(0, 10)
                         .map(li => li.textContent?.trim())
                         .filter(Boolean);
-                    
+
                     const wordCount = mainText.split(/\s+/).length;
-                    
+
                     respond(true, {
                         title,
                         url,
@@ -881,27 +1323,27 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                 }
                 return true;
             }
-            
+
             // EXTRACT_DATA: Extract structured data based on targets
             if (msgType === 'EXTRACT_DATA') {
                 try {
                     const targets = (payload as any).targets || [];
                     const items: Array<Record<string, any>> = [];
                     const seenItems = new Set<string>();
-                    
+
                     // For each target, find matching elements
                     for (const target of targets) {
                         const description = target.description;
                         const selectors = target.selectors || [];
                         const dataType = target.dataType || 'text';
-                        
+
                         for (const selector of selectors) {
                             try {
                                 const elements = document.querySelectorAll(selector);
-                                
+
                                 for (const el of Array.from(elements)) {
                                     let value = '';
-                                    
+
                                     // Extract value based on data type
                                     if (dataType === 'url' && el instanceof HTMLAnchorElement) {
                                         value = el.href;
@@ -909,37 +1351,37 @@ import { enableStealthMode, needsStealthMode } from './shared/stealth';
                                         value = el.href.replace('mailto:', '');
                                     } else {
                                         value = (el.textContent || '').trim();
-                                        
+
                                         // Clean up price values
                                         if (dataType === 'price') {
                                             value = value.replace(/[^\d.,]/g, '');
                                         }
                                     }
-                                    
+
                                     if (!value) continue;
-                                    
+
                                     // Create unique key to avoid duplicates
                                     const itemKey = `${description}:${value}`;
                                     if (seenItems.has(itemKey)) continue;
                                     seenItems.add(itemKey);
-                                    
+
                                     items.push({
                                         [description]: value
                                     });
-                                    
+
                                     // Limit results
                                     if (items.length >= 200) break;
                                 }
                             } catch (e) {
                                 console.error(`Selector failed: ${selector}`, e);
                             }
-                            
+
                             if (items.length >= 200) break;
                         }
-                        
+
                         if (items.length >= 200) break;
                     }
-                    
+
                     respond(true, {
                         items,
                         count: items.length,

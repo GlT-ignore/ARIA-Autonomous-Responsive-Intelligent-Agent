@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ARIA Settings</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/panel/styles/main.css" />
+    <style>
+        body {
+            max-width: 720px;
+            margin: 0 auto;
+            padding: 32px;
+            height: auto;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 24px;
+        }
+
+        .tab {
+            padding: 12px 20px;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-muted);
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            border-bottom: 2px solid transparent;
+            transition: var(--transition);
+        }
+
+        .tab:hover {
+            color: var(--text-main);
+        }
+
+        .tab.active {
+            color: var(--primary);
+            border-bottom-color: var(--primary);
+        }
+
+        .tab-panel {
+            display: none;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        .tab-panel.active {
+            display: block;
+        }
+
+        h2 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            background: var(--accent-gradient);
+            background-clip: text;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .save-status {
+            font-size: 12px;
+            color: var(--success);
+            margin-top: 8px;
+            display: none;
+        }
+
+        .test-result {
+            margin-top: 8px;
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            display: none;
+        }
+
+        .test-result.success {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .test-result.error {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+    </style>
+</head>
+
+<body>
+    <header style="margin-bottom: 24px;">
+        <div class="brand">
+            <div class="brand-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                    <path d="M2 17l10 5 10-5" />
+                    <path d="M2 12l10 5 10-5" />
+                </svg>
+            </div>
+            <div class="brand-text">
+                <h1>ARIA</h1>
+                <span class="tagline">Settings &amp; Configuration</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+        <button class="tab active" data-tab="ai">AI Settings</button>
+        <button class="tab" data-tab="profile">Your Profile</button>
+        <button class="tab" data-tab="history">Task History</button>
+        <button class="tab" data-tab="about">About</button>
+    </div>
+
+    <!-- Tab 1: AI Settings -->
+    <div class="tab-panel active" id="tab-ai">
+        <h2>AI Configuration</h2>
+        <div class="setting-row">
+            <label class="field-label">AI Mode</label>
+            <select id="llm-mode">
+                <option value="heuristic">Quick Mode (No AI)</option>
+                <option value="llm">Smart Mode (AI Powered)</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <label class="field-label">API Endpoint</label>
+            <input id="llm-url" placeholder="https://openrouter.ai/api/v1" />
+        </div>
+        <div class="setting-row">
+            <label class="field-label">API Key</label>
+            <input id="llm-key" type="password" placeholder="Enter your API key" />
+        </div>
+        <div class="setting-row">
+            <label class="field-label">Model</label>
+            <input id="llm-model" placeholder="qwen/qwen-2.5-32b-instruct" />
+        </div>
+        <div class="setting-row">
+            <button id="test-connection" class="btn-secondary">Test Connection</button>
+            <div id="test-result" class="test-result"></div>
+        </div>
+        <div class="toggle-row">
+            <div class="toggle-info">
+                <span class="toggle-label">Smart Assistant Mode</span>
+                <span class="toggle-desc">Multi-step task planning with agent loop</span>
+            </div>
+            <label class="switch"><input id="agent-loop" type="checkbox"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+            <label class="field-label">Max Steps</label>
+            <input id="agent-max" type="number" min="1" max="500" value="50" />
+        </div>
+        <div class="setting-row mt-16">
+            <label class="field-label">Detection Strategy</label>
+            <select id="detection-strategy">
+                <option value="dom">Text &amp; Attributes</option>
+                <option value="a11y">Accessibility Tree</option>
+                <option value="vision">Visual Detection</option>
+            </select>
+        </div>
+        <div class="toggle-row">
+            <div class="toggle-info">
+                <span class="toggle-label">Vision Fallback</span>
+                <span class="toggle-desc">Use visual detection if other methods fail</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="use-vision-fallback"><span class="slider"></span></label>
+        </div>
+        <div class="toggle-row">
+            <div class="toggle-info">
+                <span class="toggle-label">Voice Feedback (TTS)</span>
+                <span class="toggle-desc">Speak task status updates aloud</span>
+            </div>
+            <label class="switch"><input type="checkbox" id="tts-enabled"><span class="slider"></span></label>
+        </div>
+        <button id="save-ai" class="btn-primary full-width mt-16">Save AI Settings</button>
+        <div id="save-ai-status" class="save-status">Settings saved!</div>
+    </div>
+
+    <!-- Tab 2: Profile -->
+    <div class="tab-panel" id="tab-profile">
+        <h2>Your Profile</h2>
+        <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 20px;">
+            Used for auto-filling forms (LinkedIn Easy Apply, job applications, etc.)
+        </p>
+        <div class="profile-grid setting-row">
+            <div><label class="field-label">First Name</label><input id="profile-firstName" placeholder="John" /></div>
+            <div><label class="field-label">Last Name</label><input id="profile-lastName" placeholder="Doe" /></div>
+        </div>
+        <div class="setting-row"><label class="field-label">Email</label><input id="profile-email"
+                placeholder="your@email.com" /></div>
+        <div class="setting-row"><label class="field-label">Phone</label><input id="profile-phone"
+                placeholder="+1 234 567 8900" /></div>
+        <div class="setting-row"><label class="field-label">Location</label><input id="profile-location"
+                placeholder="City, Country" /></div>
+        <div class="setting-row"><label class="field-label">Job Title</label><input id="profile-title"
+                placeholder="Software Engineer" /></div>
+        <div class="setting-row"><label class="field-label">Experience (years)</label><input id="profile-experience"
+                type="number" placeholder="5" /></div>
+        <div class="setting-row"><label class="field-label">Current Company</label><input id="profile-company"
+                placeholder="Acme Inc." /></div>
+        <div class="setting-row"><label class="field-label">Degree</label><input id="profile-degree"
+                placeholder="B.Tech Computer Science" /></div>
+        <div class="setting-row"><label class="field-label">University</label><input id="profile-university"
+                placeholder="MIT" /></div>
+        <div class="flex-row gap-8 mt-16">
+            <button id="save-profile" class="btn-primary flex-1">Save Profile</button>
+            <button id="load-profile" class="btn-secondary flex-1">Load Profile</button>
+        </div>
+        <div id="save-profile-status" class="save-status">Profile saved!</div>
+    </div>
+
+    <!-- Tab 3: History -->
+    <div class="tab-panel" id="tab-history">
+        <h2>Task History</h2>
+        <div id="history-stats" style="margin-bottom: 16px; font-size: 13px; color: var(--text-muted);">Loading...</div>
+        <div id="history-table"></div>
+        <div class="flex-row gap-8 mt-16">
+            <button id="export-history" class="btn-secondary flex-1">Export JSON</button>
+            <button id="prune-history" class="btn-outline flex-1">Prune Old</button>
+            <button id="clear-history" class="btn-outline flex-1" style="color: var(--danger);">Clear All</button>
+        </div>
+    </div>
+
+    <!-- Tab 4: About -->
+    <div class="tab-panel" id="tab-about">
+        <h2>About ARIA</h2>
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 20px;">
+            ARIA (Autonomous Responsive Intelligent Agent) v1.1.4<br />
+            Your Personal AI Assistant for Web Automation
+        </p>
+        <h3 style="font-size: 14px; margin-bottom: 12px; color: var(--text-main);">Keyboard Shortcuts</h3>
+        <table style="width: 100%; font-size: 13px; border-collapse: collapse;">
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 8px 0; color: var(--text-muted);">Run task / Send</td>
+                <td style="padding: 8px 0; text-align: right;"><kbd
+                        style="background: var(--bg-card); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px;">Enter</kbd>
+                </td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 8px 0; color: var(--text-muted);">New line in chat</td>
+                <td style="padding: 8px 0; text-align: right;"><kbd
+                        style="background: var(--bg-card); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px;">Ctrl
+                        + Enter</kbd></td>
+            </tr>
+            <tr style="border-bottom: 1px solid var(--border);">
+                <td style="padding: 8px 0; color: var(--text-muted);">Stop task</td>
+                <td style="padding: 8px 0; text-align: right;"><kbd
+                        style="background: var(--bg-card); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px;">Ctrl
+                        + .</kbd></td>
+            </tr>
+            <tr>
+                <td style="padding: 8px 0; color: var(--text-muted);">Toggle voice input</td>
+                <td style="padding: 8px 0; text-align: right;"><kbd
+                        style="background: var(--bg-card); padding: 2px 8px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px;">Ctrl
+                        + M</kbd></td>
+            </tr>
+        </table>
+    </div>
+
+    <script type="module" src="/src/options.ts"></script>
+</body>
+
+</html>

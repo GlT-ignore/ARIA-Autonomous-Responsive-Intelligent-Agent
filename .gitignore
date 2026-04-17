@@ -1,12 +1,31 @@
 # Dependencies
 node_modules/
+.pnp
+.pnp.js
 package-lock.json
+yarn.lock
 
 # Build output
 dist/
+build/
+*.tsbuildinfo
+
+# AI and Agent tooling
+.agent/
+.agents/
+.cursor/
+.claude/
+.gemini/
+.openai/
+benchmarks/
+creator-dashboard/
 
 # IDE and Editor files
-.vscode/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
 .idea/
 *.swp
 *.swo
@@ -46,3 +65,27 @@ coverage/
 # Build artifacts
 *.tsbuildinfo
 
+# Generated log files
+*_output.txt
+ts_errors.txt
+tsc_output*.txt
+
+# Non-ARIA folders (from previous repository)
+docs/
+
+# Non-ARIA documentation files (project planning/slides, not needed for building)
+APPLICATION_DOCUMENTATION.md
+ARIA_PRESENTATION_SLIDES.md
+FINAL_SUBMISSION_SUMMARY.md
+GITHUB_SUBMISSION_PLAN.md
+Integration_strategy.md
+QUICK_START.md
+README_ENHANCEMENTS.md
+REFACTOR_PLAN.md
+REFACTOR_SUMMARY.md
+USER_STORIES_TEST.md
+current_plan.md
+ARIA_COMPLETE_DOCUMENTATION.md
+aria_logo.svg
+logo_render.html
+ARIA_COMPLETE_DOCUMENTATION.md

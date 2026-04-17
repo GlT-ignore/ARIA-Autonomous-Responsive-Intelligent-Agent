@@ -314,12 +314,12 @@ export async function isVisionModelAvailable(baseUrl?: string, modelName?: strin
 
             return models.some((m: any) => {
                 const name = (m.name || '').toLowerCase();
-                return name.includes('llava') || 
-                       name.includes('qwen2-vl') || 
-                       name.includes('bakllava') ||
-                       name.includes('glm-4.6v') ||
-                       name.includes('glm-4-v') ||
-                       name.includes('vision');
+                return name.includes('llava') ||
+                    name.includes('qwen2-vl') ||
+                    name.includes('bakllava') ||
+                    name.includes('glm-4.6v') ||
+                    name.includes('glm-4-v') ||
+                    name.includes('vision');
             });
         } else {
             // OpenAI-compatible API: try listing models or test with a simple call
@@ -337,8 +337,8 @@ export async function isVisionModelAvailable(baseUrl?: string, modelName?: strin
                     const modelsData = await testResponse.json();
                     const models = modelsData.data || modelsData.models || [];
                     const modelNames = models.map((m: any) => (m.id || m.name || '').toLowerCase());
-                    
-                    return modelNames.some(name => 
+
+                    return modelNames.some(name =>
                         name.includes('glm-4.6v') ||
                         name.includes('glm-4-v') ||
                         name.includes('llava') ||
@@ -348,7 +348,7 @@ export async function isVisionModelAvailable(baseUrl?: string, modelName?: strin
                     );
                 }
             }
-            
+
             // If model name is provided, assume it's available (user knows what they're doing)
             return !!modelName;
         }

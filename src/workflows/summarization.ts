@@ -30,9 +30,10 @@ export interface Summary {
 async function sendToActive(type: string, payload: any): Promise<BusResponse> {
     const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tabs[0]?.id) throw new Error('No active tab');
-    
-    const req: BusRequest = { type, payload, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}` };
-    const response = await chrome.tabs.sendMessage(tabs[0].id, req);
+
+    const req: BusRequest = { type, payload, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, target: 'activeTab' };
+    // frameId: 0 = main frame only (ad iframes on Amazon/Google would respond first otherwise)
+    const response = await chrome.tabs.sendMessage(tabs[0].id, req, { frameId: 0 });
     return response as BusResponse;
 }
 
@@ -42,19 +43,19 @@ async function sendToActive(type: string, payload: any): Promise<BusResponse> {
 export async function extractPageContent(): Promise<PageContent> {
     try {
         const response = await sendToActive('EXTRACT_CONTENT', {});
-        
+
         if (response.success && response.data) {
             return response.data as PageContent;
         }
-        
+
         throw new Error('Failed to extract content from page');
     } catch (error) {
         console.error('Content extraction failed:', error);
-        
+
         // Fallback: try to get basic info from current tab
         const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
         const tab = tabs[0];
-        
+
         return {
             title: tab?.title || 'Unknown',
             url: tab?.url || '',
@@ -97,21 +98,21 @@ KEY_TAKEAWAYS:
 
     try {
         const response = await planWithLLM(prompt);
-        
+
         // Parse response
         const summaryMatch = response.match(/SUMMARY:\s*([\s\S]+?)(?=KEY_TAKEAWAYS:|$)/i);
         const takeawaysMatch = response.match(/KEY_TAKEAWAYS:\s*([\s\S]+)/i);
-        
+
         const summaryText = summaryMatch?.[1]?.trim() || response;
         const takeawaysText = takeawaysMatch?.[1]?.trim() || '';
-        
+
         // Extract bullet points
         const keyTakeaways = takeawaysText
             .split('\n')
             .filter(line => line.trim().startsWith('-'))
             .map(line => line.trim().replace(/^-\s*/, ''))
             .filter(Boolean);
-        
+
         return {
             content: summaryText,
             keyTakeaways,
@@ -121,7 +122,7 @@ KEY_TAKEAWAYS:
         };
     } catch (error) {
         console.error('Summarization failed:', error);
-        
+
         return {
             content: `Failed to generate summary: ${String(error)}`,
             keyTakeaways: [],
@@ -144,9 +145,9 @@ export function generateSummaryHTML(summary: Summary): string {
             </ul>
         </div>
     ` : '';
-    
+
     const date = new Date(summary.timestamp).toLocaleString();
-    
+
     return `
         <div id="summary-result" style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:8px; padding:16px; margin-top:12px;">
             <div style="display:flex; justify-content:space-between; align-items:start; margin-bottom:12px;">
@@ -179,24 +180,24 @@ export function generateSummaryHTML(summary: Summary): string {
 export async function executeSummarizationWorkflow(log: (msg: any) => void): Promise<Summary> {
     log({ status: 'Extracting page content...' });
     const content = await extractPageContent();
-    
-    log({ 
-        status: 'Content extracted', 
+
+    log({
+        status: 'Content extracted',
         title: content.title,
         wordCount: content.wordCount,
         headings: content.headings.length
     });
-    
+
     if (content.wordCount === 0) {
         log({ warning: 'Page has no readable content' });
         throw new Error('Page has no readable content to summarize');
     }
-    
+
     log({ status: 'Generating summary with LLM...' });
     const summary = await summarizeWithLLM(content);
-    
+
     log({ status: 'Summary generated', keyTakeaways: summary.keyTakeaways.length });
-    
+
     return summary;
 }
 

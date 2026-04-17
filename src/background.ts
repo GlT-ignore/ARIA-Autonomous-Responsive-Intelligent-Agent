@@ -1,11 +1,11 @@
 import { createId, type BusRequest, type BusResponse } from './shared/types';
 
 chrome.runtime.onInstalled.addListener(() => {
-    console.log('WebPilot installed');
+    console.log('ARIA installed');
     // Auto-open side panel on toolbar click
     // This avoids gesture timing issues and ensures default_path is used
     if (chrome.sidePanel?.setPanelBehavior) {
-        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {});
+        chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => { });
     }
 });
 
@@ -33,7 +33,7 @@ function isNoReceiverError(err?: string): boolean {
 }
 
 // Message router: panel/background -> active tab content script
-chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
+chrome.runtime.onMessage.addListener((raw: any, sender: any, sendResponse: (response: any) => void) => {
     const request = raw as BusRequest | { type: string };
     if ((request as any)?.type === 'PING') {
         sendResponse({ ok: true, from: 'background' });
@@ -49,7 +49,7 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
             const tabId: number | undefined =
                 sender.tab?.id ??
                 (await new Promise<number | undefined>((resolve) => {
-                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => resolve(tabs[0]?.id));
+                    chrome.tabs.query({ active: true, currentWindow: true }, (tabs: chrome.tabs.Tab[]) => resolve(tabs[0]?.id));
                 }));
 
             if (!tabId) {
@@ -71,7 +71,9 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
 
             const sendOnce = () =>
                 new Promise<BusResponse>((resolve) => {
-                    chrome.tabs.sendMessage(tabId, forward, (resp: BusResponse) => {
+                    // frameId: 0 = main frame only. Without this, Amazon/Google ad iframes
+                    // (which also have the content script) respond first and return empty snapshots.
+                    chrome.tabs.sendMessage(tabId, forward, { frameId: 0 }, (resp: BusResponse) => {
                         if (chrome.runtime.lastError) {
                             resolve({
                                 id,
@@ -91,7 +93,14 @@ chrome.runtime.onMessage.addListener((raw, sender, sendResponse) => {
             if (!resp.success && isNoReceiverError(resp.error)) {
                 try {
                     await ensureContentScriptInjected(tabId);
+                    // Add a tiny delay to allow the content script's listeners to fully register
+                    await new Promise(r => setTimeout(r, 150));
                     resp = await sendOnce();
+
+                    // If STILL failing after injection, flag it explicitly
+                    if (!resp.success && isNoReceiverError(resp.error)) {
+                        resp.error = `${resp.error} | Content script injected but did not respond in time.`;
+                    }
                 } catch (e) {
                     const hint =
                         'Could not inject content script. If this is a restricted page (chrome://, edge://, Web Store) or site access is disabled, injection is not allowed.';
